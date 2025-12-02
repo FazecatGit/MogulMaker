@@ -16,11 +16,14 @@ import (
 type Bar = types.Bar
 
 func GetAlpacaBars(symbol string, timeframe string, limit int, startDate string) ([]Bar, error) {
+	return GetAlpacaBarsWithType(symbol, timeframe, limit, startDate, "stock")
+}
+
+func GetAlpacaBarsWithType(symbol string, timeframe string, limit int, startDate string, assetType string) ([]Bar, error) {
 	apiKey := os.Getenv("ALPACA_API_KEY")
 	secretKey := os.Getenv("ALPACA_API_SECRET")
 
 	if startDate == "" {
-		// Compute a start time far enough in the past to return `limit` bars
 		now := time.Now().UTC()
 
 		timeframeToDur := func(tf string) time.Duration {
@@ -58,10 +61,18 @@ func GetAlpacaBars(symbol string, timeframe string, limit int, startDate string)
 		startDate = start.Format(time.RFC3339)
 	}
 
-	apiURL := fmt.Sprintf(
-		"https://data.alpaca.markets/v2/stocks/%s/bars?timeframe=%s&limit=%d&start=%s",
-		symbol, timeframe, limit, startDate,
-	)
+	var apiURL string
+	if assetType == "crypto" {
+		apiURL = fmt.Sprintf(
+			"https://data.alpaca.markets/v1beta3/crypto/us/bars?symbols=%s&timeframe=%s&limit=%d&start=%s",
+			url.QueryEscape(symbol), timeframe, limit, startDate,
+		)
+	} else {
+		apiURL = fmt.Sprintf(
+			"https://data.alpaca.markets/v2/stocks/%s/bars?timeframe=%s&limit=%d&start=%s",
+			symbol, timeframe, limit, startDate,
+		)
+	}
 
 	fmt.Printf("🔗 API Request: %s\n", apiURL)
 
@@ -92,16 +103,40 @@ func GetAlpacaBars(symbol string, timeframe string, limit int, startDate string)
 			return fmt.Errorf("API returned status %d", resp.StatusCode)
 		}
 
-		type Response struct {
-			Bars []Bar `json:"bars"`
+		// Handle different response structures for stock vs crypto
+		if assetType == "crypto" {
+			type CryptoResponse struct {
+				Bars map[string][]types.CryptoBar `json:"bars"`
+			}
+			var r CryptoResponse
+			if err := json.NewDecoder(resp.Body).Decode(&r); err != nil {
+				return err
+			}
+			// Extract bars for the requested symbol and convert to standard Bar format
+			for _, barSlice := range r.Bars {
+				for _, cb := range barSlice {
+					bars = append(bars, Bar{
+						Timestamp: cb.Timestamp,
+						Open:      cb.Open,
+						High:      cb.High,
+						Low:       cb.Low,
+						Close:     cb.Close,
+						Volume:    int64(cb.Volume), // Convert float to int64
+					})
+				}
+				break
+			}
+		} else {
+			// v2 stock endpoint returns flat structure with int volumes
+			type StockResponse struct {
+				Bars []Bar `json:"bars"`
+			}
+			var r StockResponse
+			if err := json.NewDecoder(resp.Body).Decode(&r); err != nil {
+				return err
+			}
+			bars = r.Bars
 		}
-
-		var r Response
-		if err := json.NewDecoder(resp.Body).Decode(&r); err != nil {
-			return err
-		}
-
-		bars = r.Bars
 		return nil
 	}, retryConfig)
 

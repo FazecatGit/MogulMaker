@@ -36,6 +36,27 @@ func FetchMarketData(symbol string, timeframe string, limit int, startDate strin
 	return bars, nil
 }
 
+func FetchMarketDataWithType(symbol string, timeframe string, limit int, startDate string, assetType string) ([]datafeed.Bar, error) {
+	if timeframe == "" {
+		return nil, fmt.Errorf("timeframe cannot be empty")
+	}
+
+	if limit < 14 {
+		limit = 14
+	}
+
+	bars, err := datafeed.GetAlpacaBarsWithType(symbol, timeframe, limit, startDate, assetType)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(bars) < 14 {
+		return nil, fmt.Errorf("not enough data to calculate RSI/ATR: fetched %d bars, need at least 14", len(bars))
+	}
+
+	return bars, nil
+}
+
 func ShowMainMenu() (string, error) {
 	fmt.Println("Welcome to MongelMaker Interactive!")
 	fmt.Println("1. Analyze Single Stock")
@@ -488,6 +509,29 @@ func ShowTimeframeMenu() (string, error) {
 		return "1Week", nil
 	case 11:
 		return "1Month", nil
+	default:
+		fmt.Println("Invalid choice.")
+		return "", fmt.Errorf("invalid choice")
+	}
+}
+
+func ShowAssetTypeMenu() (string, error) {
+	fmt.Println("\nChoose asset type:")
+	fmt.Println("1. Stock")
+	fmt.Println("2. Crypto")
+	fmt.Print("Enter choice: ")
+	var choice int
+	_, err := fmt.Scan(&choice)
+	if err != nil {
+		fmt.Println("Invalid input. Please enter 1 or 2.")
+		return "", err
+	}
+
+	switch choice {
+	case 1:
+		return "stock", nil
+	case 2:
+		return "crypto", nil
 	default:
 		fmt.Println("Invalid choice.")
 		return "", fmt.Errorf("invalid choice")

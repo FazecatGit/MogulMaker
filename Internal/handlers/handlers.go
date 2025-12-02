@@ -68,9 +68,23 @@ func HandleScan(ctx context.Context, cfg *config.Config, q *database.Queries) {
 }
 
 func HandleAnalyzeSingle(ctx context.Context, q *database.Queries) {
-	fmt.Print("Enter stock symbol (e.g., AAPL): ")
+	assetType, err := interactive.ShowAssetTypeMenu()
+	if err != nil {
+		fmt.Println("❌ Invalid asset type")
+		return
+	}
+	clearInputBuffer()
+
+	var symbolExample string
+	if assetType == "crypto" {
+		symbolExample = "e.g., BTC/USD"
+	} else {
+		symbolExample = "e.g., AAPL"
+	}
+
+	fmt.Printf("Enter symbol (%s): ", symbolExample)
 	var symbol string
-	_, err := fmt.Scanln(&symbol)
+	_, err = fmt.Scanln(&symbol)
 	if err != nil || symbol == "" {
 		fmt.Println("❌ Invalid symbol")
 		return
@@ -89,7 +103,7 @@ func HandleAnalyzeSingle(ctx context.Context, q *database.Queries) {
 		numBars = 100
 	}
 
-	bars, err := interactive.FetchMarketData(symbol, timeframe, numBars, "")
+	bars, err := interactive.FetchMarketDataWithType(symbol, timeframe, numBars, "", assetType)
 	if err != nil {
 		fmt.Printf("❌ Failed to fetch data: %v\n", err)
 		return
@@ -129,23 +143,45 @@ func HandleAnalyzeSingle(ctx context.Context, q *database.Queries) {
 }
 
 func HandleScreener(ctx context.Context, cfg *config.Config, q *database.Queries) {
-	symbols := strategy.GetPopularStocks()
+	assetType, err := interactive.ShowAssetTypeMenu()
+	if err != nil {
+		fmt.Println("❌ Invalid asset type")
+		return
+	}
+
+	var symbols []string
+	if assetType == "crypto" {
+		fmt.Println("\n📝 Enter crypto symbols (comma-separated, e.g., BTC/USD):")
+		reader := bufio.NewReader(os.Stdin)
+		input, _ := reader.ReadString('\n')
+		input = strings.TrimSpace(input)
+		if input == "" {
+			fmt.Println("❌ No symbols entered")
+			return
+		}
+		for _, sym := range strings.Split(input, ",") {
+			symbols = append(symbols, strings.TrimSpace(sym))
+		}
+	} else {
+		symbols = strategy.GetPopularStocks()
+	}
+
 	if len(symbols) == 0 {
-		fmt.Println("❌ Could not get popular stocks")
+		fmt.Println("❌ Could not get symbols")
 		return
 	}
 
 	criteria := strategy.DefaultScreenerCriteria()
 
-	fmt.Println("🔍 Screening stocks...")
-	results, err := strategy.ScreenStocks(symbols, "1Day", 100, criteria, nil)
+	fmt.Printf("🔍 Screening %s (%d symbols)...\n", assetType, len(symbols))
+	results, err := strategy.ScreenStocksWithType(symbols, "1Day", 100, criteria, nil, assetType)
 	if err != nil {
 		fmt.Printf("❌ Screener failed: %v\n", err)
 		return
 	}
 
 	if len(results) == 0 {
-		fmt.Println("📭 No stocks matched criteria")
+		fmt.Println("📭 No symbols matched criteria")
 		return
 	}
 
@@ -221,6 +257,16 @@ func HandleScreener(ctx context.Context, cfg *config.Config, q *database.Queries
 			fmt.Print(" 🟢 Oversold")
 		}
 		fmt.Println()
+	}
+
+	if selectedStock.LongSignal != nil {
+		fmt.Printf("\n📈 LONG Signal: %s (Confidence: %.1f%%)\n", selectedStock.LongSignal.Direction, selectedStock.LongSignal.Confidence)
+		fmt.Printf("   Reason: %s\n", selectedStock.LongSignal.Reasoning)
+	}
+
+	if selectedStock.ShortSignal != nil {
+		fmt.Printf("\n📉 SHORT Signal: %s (Confidence: %.1f%%)\n", selectedStock.ShortSignal.Direction, selectedStock.ShortSignal.Confidence)
+		fmt.Printf("   Reason: %s\n", selectedStock.ShortSignal.Reasoning)
 	}
 
 	if selectedStock.ATR != nil {

@@ -32,6 +32,8 @@ type StockScore struct {
 	NewsImpact     float64
 	FinalSignal    CombinedSignal
 	Recommendation string
+	LongSignal     *TradeSignal
+	ShortSignal    *TradeSignal
 }
 
 func DefaultScreenerCriteria() ScreenerCriteria {
@@ -43,12 +45,16 @@ func DefaultScreenerCriteria() ScreenerCriteria {
 	}
 }
 
-// screens a list of symbols based on criteria
+// default stock screener
 func ScreenStocks(symbols []string, timeframe string, numBars int, criteria ScreenerCriteria, newsStorage *NewsStorage) ([]StockScore, error) {
+	return ScreenStocksWithType(symbols, timeframe, numBars, criteria, newsStorage, "stock")
+}
+
+func ScreenStocksWithType(symbols []string, timeframe string, numBars int, criteria ScreenerCriteria, newsStorage *NewsStorage, assetType string) ([]StockScore, error) {
 	var results []StockScore
 
 	for _, symbol := range symbols {
-		score, signals, rsi, atr, err := scoreStock(symbol, timeframe, numBars, criteria, newsStorage)
+		score, signals, rsi, atr, longSignal, shortSignal, err := scoreStockWithType(symbol, timeframe, numBars, criteria, newsStorage, assetType)
 		if err != nil {
 			log.Printf("Error screening %s: %v", symbol, err)
 			continue
@@ -58,11 +64,13 @@ func ScreenStocks(symbols []string, timeframe string, numBars int, criteria Scre
 			continue
 		}
 		results = append(results, StockScore{
-			Symbol:  symbol,
-			Score:   score,
-			Signals: signals,
-			RSI:     rsi,
-			ATR:     atr,
+			Symbol:      symbol,
+			Score:       score,
+			Signals:     signals,
+			RSI:         rsi,
+			ATR:         atr,
+			LongSignal:  longSignal,
+			ShortSignal: shortSignal,
 		})
 	}
 	sort.Slice(results, func(i, j int) bool {
@@ -72,15 +80,19 @@ func ScreenStocks(symbols []string, timeframe string, numBars int, criteria Scre
 	return results, nil
 }
 
-func scoreStock(symbol, timeframe string, numBars int, criteria ScreenerCriteria, newsStorage *NewsStorage) (score float64, signals []string, rsi, atr *float64, err error) {
+func scoreStock(symbol, timeframe string, numBars int, criteria ScreenerCriteria, newsStorage *NewsStorage) (score float64, signals []string, rsi, atr *float64, longSignal, shortSignal *TradeSignal, err error) {
+	return scoreStockWithType(symbol, timeframe, numBars, criteria, newsStorage, "stock")
+}
 
-	bars, err := datafeed.GetAlpacaBars(symbol, timeframe, numBars, "")
+func scoreStockWithType(symbol, timeframe string, numBars int, criteria ScreenerCriteria, newsStorage *NewsStorage, assetType string) (score float64, signals []string, rsi, atr *float64, longSignal, shortSignal *TradeSignal, err error) {
+
+	bars, err := datafeed.GetAlpacaBarsWithType(symbol, timeframe, numBars, "", assetType)
 	if err != nil {
-		return 0, nil, nil, nil, err
+		return 0, nil, nil, nil, nil, nil, err
 	}
 
 	if len(bars) < 2 {
-		return 0, nil, nil, nil, fmt.Errorf("insufficient data for %s (need 2 bars, got %d)", symbol, len(bars))
+		return 0, nil, nil, nil, nil, nil, fmt.Errorf("insufficient data for %s (need 2 bars, got %d)", symbol, len(bars))
 	}
 
 	startTime := time.Now().AddDate(0, 0, -180)
@@ -145,7 +157,7 @@ func scoreStock(symbol, timeframe string, numBars int, criteria ScreenerCriteria
 	if newsStorage != nil {
 		news, err := newsStorage.GetLatestNews(context.Background(), symbol, 1)
 		if err == nil && len(news) > 0 && news[0].Sentiment == Positive {
-			score += 10 // Boost score for positive sentiment
+			score += 10
 		}
 	}
 
@@ -164,7 +176,7 @@ func scoreStock(symbol, timeframe string, numBars int, criteria ScreenerCriteria
 
 	currentPrice := latestBar.Close
 	if currentPrice < support*1.01 {
-		score += 15 // Strong buy signal
+		score += 15 //  buy signal
 		signals = append(signals, fmt.Sprintf("Near Support: $%.2f", support))
 	}
 	if currentPrice > resistance*0.99 {
@@ -176,7 +188,10 @@ func scoreStock(symbol, timeframe string, numBars int, criteria ScreenerCriteria
 
 	signals = append(signals, fmt.Sprintf("\n🎯 FINAL: %s", FormatSignal(combinedSignal)))
 
-	return score, signals, rsi, atr, nil
+	longSignal = AnalyzeForLongs(latestBar, rsi, atr, criteria)
+	shortSignal = AnalyzeForShorts(latestBar, rsi, atr, criteria)
+
+	return score, signals, rsi, atr, longSignal, shortSignal, nil
 }
 
 func GetTradableAssets() ([]string, error) {

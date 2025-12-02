@@ -9,6 +9,15 @@ type Bar struct {
 	Volume    int64   `json:"v"`
 }
 
+type CryptoBar struct {
+	Timestamp string  `json:"t"`
+	Open      float64 `json:"o"`
+	High      float64 `json:"h"`
+	Low       float64 `json:"l"`
+	Close     float64 `json:"c"`
+	Volume    float64 `json:"v"` // Crypto returns volume as float
+}
+
 type Candidate struct {
 	Symbol         string
 	Score          float64

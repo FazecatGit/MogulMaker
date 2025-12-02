@@ -35,8 +35,9 @@ type Config struct {
 	Profiles map[string]ProfileConfig `yaml:"profiles"`
 
 	Features struct {
-		CryptoSupport      bool `yaml:"crypto_support"`
-		EnableShortSignals bool `yaml:"enable_short_signals"`
+		CryptoSupport      bool   `yaml:"crypto_support"`
+		EnableShortSignals bool   `yaml:"enable_short_signals"`
+		AssetType          string `yaml:"asset_type"`
 	} `yaml:"features"`
 }
 

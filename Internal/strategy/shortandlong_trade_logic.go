@@ -18,6 +18,9 @@ func AnalyzeForShorts(bar datafeed.Bar, rsi *float64, atr *float64, criteria Scr
 	}
 	if *rsi > criteria.MaxRSI && *atr >= criteria.MinATR {
 		confidence := ((*rsi - criteria.MaxRSI) / (100 - criteria.MaxRSI)) * 100
+		if confidence > 100 {
+			confidence = 100
+		}
 		reasoning := "RSI indicates overbought conditions with sufficient volatility."
 		return &TradeSignal{
 			Direction:  "SHORT",
