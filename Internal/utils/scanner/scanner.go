@@ -41,7 +41,6 @@ func PerformScan(ctx context.Context, profileName string, cfg *config.Config, q 
 
 		bars, err := db.GetAlpacaBars(symbol, "1Day", 100, "")
 		if err != nil {
-			// Log error but continue scanning other symbols
 			continue
 		}
 
@@ -86,7 +85,8 @@ func PerformScan(ctx context.Context, profileName string, cfg *config.Config, q 
 			continue
 		}
 
-		score := strategy.CalculateInterestScore(scoringInput)
+		weights := cfg.Profiles[profileName].SignalWeights
+		score := strategy.CalculateInterestScore(scoringInput, weights)
 
 		err = q.UpdateWatchlistScore(ctx, database.UpdateWatchlistScoreParams{
 			Score:  float32(score),
@@ -125,7 +125,7 @@ func GetNextScanDue(lastScan time.Time, profileName string, cfg *config.Config) 
 	return lastScan.Add(interval)
 }
 
-func PerformProfileScan(ctx context.Context, profileName string, minScore float64, offset int, batchSize int) ([]types.Candidate, int, error) {
+func PerformProfileScan(ctx context.Context, profileName string, minScore float64, offset int, batchSize int, cfg *config.Config) ([]types.Candidate, int, error) {
 	symbols, err := strategy.GetTradableAssets()
 	if err != nil {
 		return nil, 0, fmt.Errorf("failed to fetch tradeable assets: %v", err)
@@ -156,7 +156,8 @@ func PerformProfileScan(ctx context.Context, profileName string, minScore float6
 			continue
 		}
 
-		candidate, err := analyzer.CalculateCandidateMetrics(ctx, symbol, bars)
+		weights := cfg.Profiles[profileName].SignalWeights
+		candidate, err := analyzer.CalculateCandidateMetrics(ctx, symbol, bars, cfg, weights)
 		if err != nil {
 			continue
 		}

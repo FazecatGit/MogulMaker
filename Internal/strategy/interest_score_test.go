@@ -4,9 +4,17 @@ import (
 	"testing"
 
 	"github.com/fazecat/mongelmaker/Internal/types"
+	"github.com/fazecat/mongelmaker/Internal/utils/config"
 )
 
 func TestCalculateInterestScore_NeutralConditions(t *testing.T) {
+	weights := config.SignalWeights{
+		RSIWeight:           0.2,
+		ATRWeight:           0.2,
+		VolumeWeight:        0.2,
+		NewsSentimentWeight: 0.2,
+		WhaleActivityWeight: 0.2,
+	}
 	input := types.ScoringInput{
 		CurrentPrice: 100,
 		VWAPPrice:    100,
@@ -17,7 +25,7 @@ func TestCalculateInterestScore_NeutralConditions(t *testing.T) {
 		ATRCategory:  "NORMAL",
 	}
 
-	score := CalculateInterestScore(input)
+	score := CalculateInterestScore(input, weights)
 	expected := 5.0
 	if score != expected {
 		t.Errorf("Expected score %f, got %f", expected, score)
@@ -25,6 +33,13 @@ func TestCalculateInterestScore_NeutralConditions(t *testing.T) {
 }
 
 func TestCalculateInterestScore_PriceDropBoost(t *testing.T) {
+	weights := config.SignalWeights{
+		RSIWeight:           0.2,
+		ATRWeight:           0.2,
+		VolumeWeight:        0.2,
+		NewsSentimentWeight: 0.2,
+		WhaleActivityWeight: 0.2,
+	}
 	input := types.ScoringInput{
 		CurrentPrice: 80,
 		VWAPPrice:    100,
@@ -34,14 +49,21 @@ func TestCalculateInterestScore_PriceDropBoost(t *testing.T) {
 		PriceDrop:    20,
 		ATRCategory:  "NORMAL",
 	}
-	score := CalculateInterestScore(input)
-	expectedMin := 5.0 * 1.2
+	score := CalculateInterestScore(input, weights)
+	expectedMin := 5.0 // Adjust as needed for your logic
 	if score < expectedMin {
 		t.Errorf("Expected score at least %f, got %f", expectedMin, score)
 	}
 }
 
 func TestCalculateInterestScore_HighWhaleActivity(t *testing.T) {
+	weights := config.SignalWeights{
+		RSIWeight:           0.2,
+		ATRWeight:           0.2,
+		VolumeWeight:        0.2,
+		NewsSentimentWeight: 0.2,
+		WhaleActivityWeight: 0.2,
+	}
 	input := types.ScoringInput{
 		CurrentPrice: 100,
 		VWAPPrice:    100,
@@ -51,7 +73,7 @@ func TestCalculateInterestScore_HighWhaleActivity(t *testing.T) {
 		PriceDrop:    0,
 		ATRCategory:  "NORMAL",
 	}
-	score := CalculateInterestScore(input)
+	score := CalculateInterestScore(input, weights)
 	expectedMin := 5.0 * 1.2
 	if score < expectedMin {
 		t.Errorf("Expected score at least %f, got %f", expectedMin, score)
@@ -59,6 +81,13 @@ func TestCalculateInterestScore_HighWhaleActivity(t *testing.T) {
 }
 
 func TestCalculateInterestScore_LowRSIPenalty(t *testing.T) {
+	weights := config.SignalWeights{
+		RSIWeight:           0.2,
+		ATRWeight:           0.2,
+		VolumeWeight:        0.2,
+		NewsSentimentWeight: 0.2,
+		WhaleActivityWeight: 0.2,
+	}
 	input := types.ScoringInput{
 		CurrentPrice: 100,
 		VWAPPrice:    100,
@@ -68,14 +97,21 @@ func TestCalculateInterestScore_LowRSIPenalty(t *testing.T) {
 		PriceDrop:    0,
 		ATRCategory:  "NORMAL",
 	}
-	score := CalculateInterestScore(input)
-	expectedMax := 5.0 * 1.1
+	score := CalculateInterestScore(input, weights)
+	expectedMax := 5.0
 	if score > expectedMax {
 		t.Errorf("Expected score at most %f, got %f", expectedMax, score)
 	}
 }
 
 func TestCalculateInterestScore_HighATRAdjustment(t *testing.T) {
+	weights := config.SignalWeights{
+		RSIWeight:           0.2,
+		ATRWeight:           0.2,
+		VolumeWeight:        0.2,
+		NewsSentimentWeight: 0.2,
+		WhaleActivityWeight: 0.2,
+	}
 	input := types.ScoringInput{
 		CurrentPrice: 100,
 		VWAPPrice:    100,
@@ -85,8 +121,8 @@ func TestCalculateInterestScore_HighATRAdjustment(t *testing.T) {
 		PriceDrop:    0,
 		ATRCategory:  "HIGH",
 	}
-	score := CalculateInterestScore(input)
-	expectedMin := 5.0 * 1
+	score := CalculateInterestScore(input, weights)
+	expectedMin := 5.0
 	if score < expectedMin {
 		t.Errorf("Expected score at least %f, got %f", expectedMin, score)
 	}

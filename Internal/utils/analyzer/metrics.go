@@ -7,6 +7,7 @@ import (
 	datafeed "github.com/fazecat/mongelmaker/Internal/database"
 	"github.com/fazecat/mongelmaker/Internal/strategy"
 	"github.com/fazecat/mongelmaker/Internal/types"
+	"github.com/fazecat/mongelmaker/Internal/utils/config"
 )
 
 func extractClosingPrices(bars []types.Bar) []float64 {
@@ -17,7 +18,7 @@ func extractClosingPrices(bars []types.Bar) []float64 {
 	return closes
 }
 
-func CalculateCandidateMetrics(ctx context.Context, symbol string, bars []types.Bar) (*types.Candidate, error) {
+func CalculateCandidateMetrics(ctx context.Context, symbol string, bars []types.Bar, cfg *config.Config, weights config.SignalWeights) (*types.Candidate, error) {
 	if len(bars) == 0 {
 		return nil, fmt.Errorf("no bars provided for %s", symbol)
 	}
@@ -46,8 +47,7 @@ func CalculateCandidateMetrics(ctx context.Context, symbol string, bars []types.
 		ATRValue:     atrValue,
 		PriceDrop:    (bars[len(bars)-2].Close - bars[len(bars)-1].Close) / bars[len(bars)-2].Close * 100,
 	}
-
-	interestScore := strategy.CalculateInterestScore(interestScoreInput)
+	interestScore := strategy.CalculateInterestScore(interestScoreInput, weights)
 
 	latestPattern := GetLatestCandlePattern(bars, 5)
 

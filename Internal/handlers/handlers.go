@@ -429,7 +429,7 @@ func HandleScout(ctx context.Context, cfg *config.Config, q *database.Queries) {
 
 	for {
 		fmt.Printf("\n🔄 Scanning batch %d (evaluating %d symbols)...\n", batchNum, batchSize)
-		candidates, totalSymbols, err := scanner.PerformProfileScan(ctx, selectedProfile, minScore, offset, batchSize)
+		candidates, totalSymbols, err := scanner.PerformProfileScan(ctx, selectedProfile, minScore, offset, batchSize, cfg)
 		if err != nil {
 			fmt.Printf("❌ Scout scan failed: %v\n", err)
 			return
