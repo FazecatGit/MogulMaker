@@ -108,3 +108,16 @@ func (c *Config) GetProfile(profileName string) *ProfileConfig {
 	}
 	return nil
 }
+
+func SaveConfig(cfg *Config) error {
+	data, err := yaml.Marshal(cfg)
+	if err != nil {
+		return err
+	}
+
+	err = os.WriteFile("Internal/utils/config/config.yaml", data, 0644)
+	if err != nil {
+		return err
+	}
+	return nil
+}

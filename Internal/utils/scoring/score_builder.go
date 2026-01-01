@@ -19,15 +19,47 @@ func BuildScoringInput(bars []types.Bar, vwapPrice float64, rsiValue float64, wh
 		priceDrop = ((openPrice - currentPrice) / openPrice) * 100
 	}
 
+	// Calculate volume ratio (current volume / average volume)
+	volumeRatio := calculateVolumeRatio(bars)
+
 	return types.ScoringInput{
-		CurrentPrice: currentPrice,
-		VWAPPrice:    vwapPrice,
-		ATRValue:     atrValue,
-		RSIValue:     rsiValue,
-		WhaleCount:   float64(whaleCount),
-		PriceDrop:    priceDrop,
-		ATRCategory:  atrCategory,
+		CurrentPrice:       currentPrice,
+		VWAPPrice:          vwapPrice,
+		ATRValue:           atrValue,
+		RSIValue:           rsiValue,
+		WhaleCount:         float64(whaleCount),
+		PriceDrop:          priceDrop,
+		ATRCategory:        atrCategory,
+		VolumeRatio:        volumeRatio,
+		NewsSentimentScore: 5.0,   // Default neutral, can be updated from news data
+		ShortSignalActive:  false, // Will be set by caller
 	}, nil
+}
+
+func calculateVolumeRatio(bars []types.Bar) float64 {
+	if len(bars) < 2 {
+		return 1.0
+	}
+
+	currentVolume := float64(bars[len(bars)-1].Volume)
+
+	// Calculate average volume from last 20 bars
+	period := 20
+	if len(bars) < period {
+		period = len(bars) - 1
+	}
+
+	totalVolume := 0.0
+	for i := len(bars) - period; i < len(bars)-1; i++ {
+		totalVolume += float64(bars[i].Volume)
+	}
+
+	avgVolume := totalVolume / float64(period)
+	if avgVolume == 0 {
+		return 1.0
+	}
+
+	return currentVolume / avgVolume
 }
 
 func CalculateATRFromBars(bars []types.Bar) float64 {

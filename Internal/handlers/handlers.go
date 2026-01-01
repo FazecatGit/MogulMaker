@@ -19,8 +19,8 @@ import (
 	"github.com/fazecat/mongelmaker/interactive"
 )
 
-// clearInputBuffer clears any remaining input from stdin
-func clearInputBuffer() {
+// ClearInputBuffer clears any remaining input from stdin
+func ClearInputBuffer() {
 	reader := bufio.NewReader(os.Stdin)
 	for {
 		r, _, err := reader.ReadRune()
@@ -44,7 +44,11 @@ func HandleScan(ctx context.Context, cfg *config.Config, q *database.Queries) {
 
 	for i, profileName := range profiles {
 		profile := cfg.Profiles[profileName]
-		fmt.Printf("%d. %s (scan interval: %d days)\n", i+1, profileName, profile.ScanIntervalDays)
+		shortSignalsAvail := "❌"
+		if cfg.Features.EnableShortSignals {
+			shortSignalsAvail = "✅"
+		}
+		fmt.Printf("%d. %s (scan: %d days, short signals: %s)\n", i+1, profileName, profile.ScanIntervalDays, shortSignalsAvail)
 	}
 
 	fmt.Print("Select profile (number): ")
@@ -67,13 +71,11 @@ func HandleScan(ctx context.Context, cfg *config.Config, q *database.Queries) {
 	fmt.Printf("✅ Scan complete! Updated %d symbols\n", scannedCount)
 }
 
-func HandleAnalyzeSingle(ctx context.Context, q *database.Queries) {
-	assetType, err := interactive.ShowAssetTypeMenu()
-	if err != nil {
-		fmt.Println("❌ Invalid asset type")
-		return
+func HandleAnalyzeSingle(ctx context.Context, assetType string, q *database.Queries) {
+	if assetType == "" {
+		assetType = "stock" // default
 	}
-	clearInputBuffer()
+	ClearInputBuffer()
 
 	var symbolExample string
 	if assetType == "crypto" {
@@ -84,7 +86,7 @@ func HandleAnalyzeSingle(ctx context.Context, q *database.Queries) {
 
 	fmt.Printf("Enter symbol (%s): ", symbolExample)
 	var symbol string
-	_, err = fmt.Scanln(&symbol)
+	_, err := fmt.Scanln(&symbol)
 	if err != nil || symbol == "" {
 		fmt.Println("❌ Invalid symbol")
 		return
@@ -122,7 +124,7 @@ func HandleAnalyzeSingle(ctx context.Context, q *database.Queries) {
 	}
 
 	displayChoice, _ := interactive.ShowDisplayMenu()
-	clearInputBuffer()
+	ClearInputBuffer()
 
 	switch displayChoice {
 	case "basic":
@@ -131,7 +133,7 @@ func HandleAnalyzeSingle(ctx context.Context, q *database.Queries) {
 		interactive.DisplayAdvancedData(bars, symbol, timeframe)
 	case "analytics":
 		tz, _ := interactive.ShowTimezoneMenu()
-		clearInputBuffer()
+		ClearInputBuffer()
 		interactive.DisplayAnalyticsData(bars, symbol, timeframe, tz, q)
 		fmt.Println("\n--- Press Enter to continue ---")
 		bufio.NewReader(os.Stdin).ReadBytes('\n')
@@ -349,73 +351,79 @@ func HandleWatchlist(ctx context.Context, q *database.Queries) {
 		fmt.Printf("❌ Failed to fetch watchlist: %v\n", err)
 		return
 	}
-	fmt.Println("\n📋 Watchlist Menu:")
-	fmt.Println("1. View Watchlist")
-	fmt.Println("2. Exit")
-	fmt.Print("Enter choice (number): ")
 
-	var choice int
-	_, err = fmt.Scanln(&choice)
-	if err != nil {
-		fmt.Println("❌ Invalid input")
+	if len(watchlist) == 0 {
+		fmt.Println("📭 Watchlist is empty")
 		return
 	}
 
-	switch choice {
-	case 1:
-		if len(watchlist) == 0 {
-			fmt.Println("📭 Watchlist is empty")
-			return
+	fmt.Println("\n📊 Current Watchlist:")
+	fmt.Println("Symbol | Score | Added Date | Last Updated | Category")
+	fmt.Println("-------|-------|------------|--------------|---------")
+	for _, item := range watchlist {
+		addedStr := "N/A"
+		if item.AddedDate.Valid {
+			addedStr = item.AddedDate.Time.Format("2006-01-02")
 		}
-		fmt.Println("\n📊 Current Watchlist:")
-		fmt.Println("Symbol | Score | Added Date | Last Updated | Category")
-		fmt.Println("-------|-------|------------|--------------|---------")
-		for _, item := range watchlist {
-			addedStr := "N/A"
-			if item.AddedDate.Valid {
-				addedStr = item.AddedDate.Time.Format("2006-01-02")
-			}
-			updatedStr := "N/A"
-			if item.LastUpdated.Valid {
-				updatedStr = item.LastUpdated.Time.Format("2006-01-02")
-			}
-			fmt.Printf("%s | %.2f | %s | %s | %s\n", item.Symbol, item.Score, addedStr, updatedStr, scoring.ScoreCategory(float64(item.Score)))
+		updatedStr := "N/A"
+		if item.LastUpdated.Valid {
+			updatedStr = item.LastUpdated.Time.Format("2006-01-02")
 		}
-	case 2:
-		return
-	default:
-		fmt.Println("❌ Invalid choice")
+		fmt.Printf("%s | %.2f | %s | %s | %s\n", item.Symbol, item.Score, addedStr, updatedStr, scoring.ScoreCategory(float64(item.Score)))
 	}
 }
 
 func HandleScout(ctx context.Context, cfg *config.Config, q *database.Queries) {
+	if len(cfg.Profiles) == 0 {
+		fmt.Println("❌ No profiles configured")
+		return
+	}
+
 	profiles := make([]string, 0)
 	for name := range cfg.Profiles {
 		profiles = append(profiles, name)
 	}
 
+	fmt.Println("\n📋 Available Profiles:")
 	for i, profileName := range profiles {
 		profile := cfg.Profiles[profileName]
-		fmt.Printf("%d. %s (scan interval: %d days)\n", i+1, profileName, profile.ScanIntervalDays)
-	}
-
-	var minScore float64
-	fmt.Print("Enter minimum score threshold (e.g., 0.0 to 100.0): ")
-	_, err := fmt.Scanln(&minScore)
-	if err != nil {
-		fmt.Println("❌ Invalid input for minimum score threshold")
-		return
+		fmt.Printf("%d. %s (scan interval: %d days, default threshold: %.1f)\n", i+1, profileName, profile.ScanIntervalDays, profile.Threshold)
 	}
 
 	fmt.Print("Select profile (number): ")
 	var choice int
-	_, err = fmt.Scanln(&choice)
+	_, err := fmt.Scanln(&choice)
 	if err != nil || choice < 1 || choice > len(profiles) {
 		fmt.Println("❌ Invalid selection")
 		return
 	}
 
 	selectedProfile := profiles[choice-1]
+
+	var minScore float64
+	fmt.Print("Enter score threshold (0.0 - 10.0): ")
+	_, err = fmt.Scanln(&minScore)
+	if err != nil || minScore < 0 || minScore > 10 {
+		fmt.Println("❌ Invalid threshold. Must be between 0.0 and 10.0")
+		return
+	}
+
+	fmt.Printf("\n✅ Using %s profile with threshold: %.1f\n", selectedProfile, minScore)
+
+	// Asset type selection
+	assetType := "stock"
+	if cfg.Features.CryptoSupport {
+		fmt.Println("\n🪙 Asset Type:")
+		fmt.Println("1. Stocks")
+		fmt.Println("2. Crypto")
+		fmt.Print("Select asset type (1-2): ")
+		var typeChoice int
+		_, err := fmt.Scanln(&typeChoice)
+		if err == nil && typeChoice == 2 {
+			assetType = "crypto"
+		}
+	}
+	fmt.Printf("🔍 Scanning %s assets\n", assetType)
 
 	var batchSize int
 	fmt.Print("Review every N symbols (50 or 100): ")
@@ -457,7 +465,7 @@ func HandleScout(ctx context.Context, cfg *config.Config, q *database.Queries) {
 
 					if choice == "e" {
 						tz, _ := interactive.ShowTimezoneMenu()
-						clearInputBuffer()
+						ClearInputBuffer()
 						interactive.DisplayAnalyticsData(candidate.Bars, candidate.Symbol, "1Day", tz, q)
 						continue
 					}
@@ -504,7 +512,7 @@ func HandleScout(ctx context.Context, cfg *config.Config, q *database.Queries) {
 
 		nextOffset := offset + batchSize
 		if nextOffset < totalSymbols {
-			clearInputBuffer()
+			ClearInputBuffer()
 			fmt.Print("\n⏸️  Continue scanning next batch? (y to continue, or press Enter to stop): ")
 			var continueChoice string
 			fmt.Scanln(&continueChoice)

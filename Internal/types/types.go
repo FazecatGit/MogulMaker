@@ -32,11 +32,14 @@ type Candidate struct {
 }
 
 type ScoringInput struct {
-	CurrentPrice float64
-	VWAPPrice    float64
-	ATRValue     float64
-	RSIValue     float64
-	WhaleCount   float64
-	PriceDrop    float64
-	ATRCategory  string
+	CurrentPrice       float64
+	VWAPPrice          float64
+	ATRValue           float64
+	RSIValue           float64
+	WhaleCount         float64
+	PriceDrop          float64
+	ATRCategory        string
+	VolumeRatio        float64 // Current volume / Average volume
+	NewsSentimentScore float64 // 0-10 sentiment score
+	ShortSignalActive  bool    // Whether short signals are enabled
 }

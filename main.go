@@ -10,6 +10,7 @@ import (
 
 	"github.com/alpacahq/alpaca-trade-api-go/v3/alpaca"
 	datafeed "github.com/fazecat/mongelmaker/Internal/database"
+	database "github.com/fazecat/mongelmaker/Internal/database/sqlc"
 	"github.com/fazecat/mongelmaker/Internal/handlers"
 	newsscraping "github.com/fazecat/mongelmaker/Internal/news_scraping"
 	"github.com/fazecat/mongelmaker/Internal/utils"
@@ -76,13 +77,12 @@ func main() {
 
 	for {
 		fmt.Println("\n--- MongelMaker Menu ---")
-		fmt.Println("1. Scan Watchlist")
-		fmt.Println("2. Analyze Single Stock")
-		fmt.Println("3. Run Screener")
-		fmt.Println("4. View Watchlist")
-		fmt.Println("5. Scout Symbols")
-		fmt.Println("6. Exit")
-		fmt.Print("Enter choice (1-6): ")
+		fmt.Println("1. Watchlist")
+		fmt.Println("2. Analyze (Stock/Crypto)")
+		fmt.Println("3. Scout Symbols")
+		fmt.Println("4. Configure Settings")
+		fmt.Println("5. Exit")
+		fmt.Print("Enter choice (1-5): ")
 
 		var choice int
 		_, err := fmt.Scanln(&choice)
@@ -93,20 +93,79 @@ func main() {
 
 		switch choice {
 		case 1:
-			handlers.HandleScan(ctx, cfg, datafeed.Queries)
+			handleWatchlistMenu(ctx, cfg, datafeed.Queries)
 		case 2:
-			handlers.HandleAnalyzeSingle(ctx, datafeed.Queries)
+			handleAnalyzeAssetType(ctx, cfg, datafeed.Queries)
 		case 3:
-			handlers.HandleScreener(ctx, cfg, datafeed.Queries)
-		case 4:
-			handlers.HandleWatchlist(ctx, datafeed.Queries)
-		case 5:
 			handlers.HandleScout(ctx, cfg, datafeed.Queries)
-		case 6:
+		case 4:
+			config.ConfigureInteractive(cfg)
+		case 5:
 			fmt.Println("Goodbye!")
 			return
 		default:
 			fmt.Println("Invalid choice. Try again.")
+		}
+	}
+}
+
+func handleWatchlistMenu(ctx context.Context, cfg *config.Config, q *database.Queries) {
+	for {
+		fmt.Println("\n--- Watchlist Menu ---")
+		fmt.Println("1. Scan Watchlist")
+		fmt.Println("2. View Watchlist")
+		fmt.Println("3. Back")
+		fmt.Print("Enter choice (1-3): ")
+
+		var choice int
+		_, err := fmt.Scanln(&choice)
+		if err != nil {
+			fmt.Println("Invalid input. Try again.")
+			continue
+		}
+
+		switch choice {
+		case 1:
+			handlers.HandleScan(ctx, cfg, q)
+		case 2:
+			handlers.HandleWatchlist(ctx, q)
+		case 3:
+			return
+		default:
+			fmt.Println("Invalid choice. Try again.")
+		}
+	}
+}
+
+func handleAnalyzeAssetType(ctx context.Context, cfg *config.Config, q *database.Queries) {
+	for {
+		fmt.Println("\n🔬 Analyze:")
+		fmt.Println("1. Stock")
+		if cfg.Features.CryptoSupport {
+			fmt.Println("2. Crypto")
+			fmt.Println("3. Back")
+		} else {
+			fmt.Println("2. Back")
+		}
+		fmt.Print("Enter choice: ")
+
+		var choice int
+		_, err := fmt.Scanln(&choice)
+		if err != nil {
+			fmt.Println("❌ Invalid input")
+			continue
+		}
+
+		if choice == 1 {
+			handlers.HandleAnalyzeSingle(ctx, "stock", datafeed.Queries)
+			handlers.ClearInputBuffer()
+		} else if choice == 2 && cfg.Features.CryptoSupport {
+			handlers.HandleAnalyzeSingle(ctx, "crypto", datafeed.Queries)
+			handlers.ClearInputBuffer()
+		} else if (choice == 2 && !cfg.Features.CryptoSupport) || (choice == 3 && cfg.Features.CryptoSupport) {
+			return
+		} else {
+			fmt.Println("❌ Invalid choice")
 		}
 	}
 }

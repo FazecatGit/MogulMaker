@@ -1,82 +1,73 @@
 global:
-  market_hours:
-      regular_open: "09:30"
-      regular_close: "16:00"
-      premarket_open: "04:00"
-      afterhours_close: "20:00"
-      timezone: "EST"
-
-      liquidity_minimum_usd: 10000000
-
-
+    market_hours:
+        regular_open: "09:30"
+        regular_close: "16:00"
+        premarket_open: "04:00"
+        afterhours_close: "20:00"
+        timezone: EST
+    liquidity_minimum_usd: 0
 notifications:
-  channels:
-    console: true
-    file_log: true
-    discord: true
-  batch_digest_time: "08:00"  # When to batch send medium scores
-
-
+    channels:
+        console: true
+        file_log: true
+        discord: true
+    batch_digest_time: "08:00"
 archive:
-  days_before_archive: 30
-  recheck_skip_after_days: 30
-
-
+    days_before_archive: 30
+    recheck_skip_after_days: 30
 profiles:
-  aggressive:
-    threshold: 3.5
-    scan_interval_days: 1
-    indicators:
-      rsi:
-        min_oversold: 30        
-        max_overbought: 80      
-      atr:
-        min_volatility: 0.05   
-      volume:
-        min_ratio: 0.8          
-    signal_weights:
-      rsi_weight: 0.30
-      atr_weight: 0.15
-      volume_weight: 0.15
-      news_sentiment_weight: 0.20
-      whale_activity_weight: 0.20
-  
-  balanced:
-    threshold: 4.0
-    scan_interval_days: 3
-    indicators:
-      rsi:
-        min_oversold: 35        
-        max_overbought: 75      
-      atr:
-        min_volatility: 0.10   
-      volume:
-        min_ratio: 1.0         
-    signal_weights:
-      rsi_weight: 0.25
-      atr_weight: 0.20
-      volume_weight: 0.20
-      news_sentiment_weight: 0.20
-      whale_activity_weight: 0.15
-  
-  conservative:
-    threshold: 4.5
-    scan_interval_days: 7
-    indicators:
-      rsi:
-        min_oversold: 40        
-        max_overbought: 70      
-      atr:
-        min_volatility: 0.15    
-      volume:
-        min_ratio: 1.5          
-    signal_weights:
-      rsi_weight: 0.20
-      atr_weight: 0.25
-      volume_weight: 0.25
-      news_sentiment_weight: 0.15
-      whale_activity_weight: 0.15
-
+    aggressive:
+        threshold: 1
+        scan_interval_days: 1
+        indicators:
+            rsi:
+                min_oversold: 35
+                max_overbought: 82
+            atr:
+                min_volatility: 0.06
+            volume:
+                min_ratio: 0.81
+        signal_weights:
+            rsi_weight: 0.3
+            atr_weight: 0.15
+            volume_weight: 0.15
+            news_sentiment_weight: 0.2
+            whale_activity_weight: 0.2
+    balanced:
+        threshold: 4
+        scan_interval_days: 3
+        indicators:
+            rsi:
+                min_oversold: 35
+                max_overbought: 75
+            atr:
+                min_volatility: 0.1
+            volume:
+                min_ratio: 1
+        signal_weights:
+            rsi_weight: 0.25
+            atr_weight: 0.21
+            volume_weight: 0.22
+            news_sentiment_weight: 0.22
+            whale_activity_weight: 0.16
+    conservative:
+        threshold: 4.5
+        scan_interval_days: 7
+        indicators:
+            rsi:
+                min_oversold: 40
+                max_overbought: 70
+            atr:
+                min_volatility: 0.15
+            volume:
+                min_ratio: 1.5
+        signal_weights:
+            rsi_weight: 0.2
+            atr_weight: 0.25
+            volume_weight: 0.25
+            news_sentiment_weight: 0.15
+            whale_activity_weight: 0.15
 features:
-  crypto_support: false         
-  enable_short_signals: false 
+    crypto_support: true
+    enable_short_signals: true
+    asset_type: ""
