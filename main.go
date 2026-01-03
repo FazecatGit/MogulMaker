@@ -80,9 +80,11 @@ func main() {
 		fmt.Println("1. Watchlist")
 		fmt.Println("2. Analyze (Stock/Crypto)")
 		fmt.Println("3. Scout Symbols")
-		fmt.Println("4. Configure Settings")
-		fmt.Println("5. Exit")
-		fmt.Print("Enter choice (1-5): ")
+		fmt.Println("4. Execute Trades")
+		fmt.Println("5. Trade History")
+		fmt.Println("6. Configure Settings")
+		fmt.Println("7. Exit")
+		fmt.Print("Enter choice (1-7): ")
 
 		var choice int
 		_, err := fmt.Scanln(&choice)
@@ -99,8 +101,12 @@ func main() {
 		case 3:
 			handlers.HandleScout(ctx, cfg, datafeed.Queries)
 		case 4:
-			config.ConfigureInteractive(cfg)
+			handlers.HandleExecuteTrades(ctx, cfg, datafeed.Queries, alpclient)
 		case 5:
+			handlers.HandleTradeHistory(ctx, cfg, datafeed.Queries)
+		case 6:
+			config.ConfigureInteractive(cfg)
+		case 7:
 			fmt.Println("Goodbye!")
 			return
 		default:

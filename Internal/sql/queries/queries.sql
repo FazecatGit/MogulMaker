@@ -200,3 +200,25 @@ FROM scout_skip_list
 WHERE symbol = $1 
   AND profile_name = $2 
   AND recheck_after > NOW();
+
+-- name: LogTrade :exec
+INSERT INTO trades (symbol, side, quantity, price, total_value, alpaca_order_id, status, created_at)
+VALUES ($1, $2, $3, $4, $5, $6, $7, NOW());
+
+-- name: GetTradeHistory :many
+SELECT id, symbol, side, quantity, price, total_value, alpaca_order_id, status, created_at, filled_at
+FROM trades
+WHERE symbol = $1
+ORDER BY created_at DESC
+LIMIT $2;
+
+-- name: GetAllOpenTrades :many
+SELECT id, symbol, side, quantity, price, total_value, alpaca_order_id, status, created_at
+FROM trades
+WHERE status = 'PENDING' OR status = 'FILLED'
+ORDER BY created_at DESC;
+
+-- name: UpdateTradeStatus :exec
+UPDATE trades
+SET status = $1, filled_at = NOW()
+WHERE alpaca_order_id = $2;

@@ -8,6 +8,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/alpacahq/alpaca-trade-api-go/v3/alpaca"
 	datafeed "github.com/fazecat/mongelmaker/Internal/database"
 	database "github.com/fazecat/mongelmaker/Internal/database/sqlc"
 	"github.com/fazecat/mongelmaker/Internal/database/watchlist"
@@ -529,4 +530,54 @@ func HandleScout(ctx context.Context, cfg *config.Config, q *database.Queries) {
 
 	fmt.Println("\n--- Press Enter to continue ---")
 	bufio.NewReader(os.Stdin).ReadBytes('\n')
+}
+
+// HandleExecuteTrades displays trade signals and executes manual trades
+func HandleExecuteTrades(ctx context.Context, cfg *config.Config, q *database.Queries, client *alpaca.Client) {
+	fmt.Println("\n❌ No recent signals loaded. Run 'Analyze' first to detect trade opportunities.")
+	fmt.Println("(Manual trade feature requires signal data from screener)")
+	fmt.Println("\nNote: To execute trades, run analysis to generate LONG/SHORT signals,")
+	fmt.Println("then ExecuteTradesFromSignals() will handle the interactive trade selection.")
+}
+
+// HandleTradeHistory displays trade history and statistics
+func HandleTradeHistory(ctx context.Context, cfg *config.Config, q *database.Queries) {
+	fmt.Println("\n=== Trade History ===")
+	var symbol string
+	fmt.Print("Enter symbol (or 'all' for all trades): ")
+	fmt.Scanln(&symbol)
+
+	// Get trades
+	if symbol == "" || symbol == "all" {
+		trades, err := datafeed.GetOpenTrades(ctx)
+		if err != nil {
+			fmt.Printf("❌ Error retrieving open trades: %v\n", err)
+			return
+		}
+
+		if len(trades) > 0 {
+			fmt.Println("\n📊 Open Trades:")
+			for _, trade := range trades {
+				fmt.Printf("  %s | %s x %s @ %s | Status: %s\n",
+					trade.Symbol, trade.Side, trade.Quantity, trade.Price, trade.Status)
+			}
+		}
+	} else {
+		trades, err := datafeed.GetTradeHistory(ctx, symbol, 50)
+		if err != nil {
+			fmt.Printf("❌ Error retrieving trades: %v\n", err)
+			return
+		}
+
+		if len(trades) == 0 {
+			fmt.Println("No trades found")
+			return
+		}
+
+		fmt.Println("\n📋 Trade History for " + symbol + ":")
+		for _, trade := range trades {
+			fmt.Printf("  %s x %s @ %s | Total: %s | Status: %s\n",
+				trade.Side, trade.Quantity, trade.Price, trade.TotalValue, trade.Status)
+		}
+	}
 }

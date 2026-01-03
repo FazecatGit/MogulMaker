@@ -285,6 +285,58 @@ func (q *Queries) GetATRPrices(ctx context.Context, arg GetATRPricesParams) ([]G
 	return items, nil
 }
 
+const getAllOpenTrades = `-- name: GetAllOpenTrades :many
+SELECT id, symbol, side, quantity, price, total_value, alpaca_order_id, status, created_at
+FROM trades
+WHERE status = 'PENDING' OR status = 'FILLED'
+ORDER BY created_at DESC
+`
+
+type GetAllOpenTradesRow struct {
+	ID            int32          `json:"id"`
+	Symbol        string         `json:"symbol"`
+	Side          string         `json:"side"`
+	Quantity      string         `json:"quantity"`
+	Price         string         `json:"price"`
+	TotalValue    string         `json:"total_value"`
+	AlpacaOrderID sql.NullString `json:"alpaca_order_id"`
+	Status        sql.NullString `json:"status"`
+	CreatedAt     sql.NullTime   `json:"created_at"`
+}
+
+func (q *Queries) GetAllOpenTrades(ctx context.Context) ([]GetAllOpenTradesRow, error) {
+	rows, err := q.db.QueryContext(ctx, getAllOpenTrades)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetAllOpenTradesRow
+	for rows.Next() {
+		var i GetAllOpenTradesRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Symbol,
+			&i.Side,
+			&i.Quantity,
+			&i.Price,
+			&i.TotalValue,
+			&i.AlpacaOrderID,
+			&i.Status,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getAllScanLogs = `-- name: GetAllScanLogs :many
 SELECT id, profile_name, last_scan_timestamp, next_scan_due, symbols_scanned
 FROM scan_log
@@ -706,6 +758,66 @@ func (q *Queries) GetScanLog(ctx context.Context, profileName string) (GetScanLo
 	return i, err
 }
 
+const getTradeHistory = `-- name: GetTradeHistory :many
+SELECT id, symbol, side, quantity, price, total_value, alpaca_order_id, status, created_at, filled_at
+FROM trades
+WHERE symbol = $1
+ORDER BY created_at DESC
+LIMIT $2
+`
+
+type GetTradeHistoryParams struct {
+	Symbol string `json:"symbol"`
+	Limit  int32  `json:"limit"`
+}
+
+type GetTradeHistoryRow struct {
+	ID            int32          `json:"id"`
+	Symbol        string         `json:"symbol"`
+	Side          string         `json:"side"`
+	Quantity      string         `json:"quantity"`
+	Price         string         `json:"price"`
+	TotalValue    string         `json:"total_value"`
+	AlpacaOrderID sql.NullString `json:"alpaca_order_id"`
+	Status        sql.NullString `json:"status"`
+	CreatedAt     sql.NullTime   `json:"created_at"`
+	FilledAt      sql.NullTime   `json:"filled_at"`
+}
+
+func (q *Queries) GetTradeHistory(ctx context.Context, arg GetTradeHistoryParams) ([]GetTradeHistoryRow, error) {
+	rows, err := q.db.QueryContext(ctx, getTradeHistory, arg.Symbol, arg.Limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetTradeHistoryRow
+	for rows.Next() {
+		var i GetTradeHistoryRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Symbol,
+			&i.Side,
+			&i.Quantity,
+			&i.Price,
+			&i.TotalValue,
+			&i.AlpacaOrderID,
+			&i.Status,
+			&i.CreatedAt,
+			&i.FilledAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getWatchlist = `-- name: GetWatchlist :many
 SELECT id, symbol, asset_type, score, reason, added_date, last_updated
 FROM watchlist
@@ -853,6 +965,34 @@ func (q *Queries) IsSymbolSkipped(ctx context.Context, arg IsSymbolSkippedParams
 	return is_skipped, err
 }
 
+const logTrade = `-- name: LogTrade :exec
+INSERT INTO trades (symbol, side, quantity, price, total_value, alpaca_order_id, status, created_at)
+VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
+`
+
+type LogTradeParams struct {
+	Symbol        string         `json:"symbol"`
+	Side          string         `json:"side"`
+	Quantity      string         `json:"quantity"`
+	Price         string         `json:"price"`
+	TotalValue    string         `json:"total_value"`
+	AlpacaOrderID sql.NullString `json:"alpaca_order_id"`
+	Status        sql.NullString `json:"status"`
+}
+
+func (q *Queries) LogTrade(ctx context.Context, arg LogTradeParams) error {
+	_, err := q.db.ExecContext(ctx, logTrade,
+		arg.Symbol,
+		arg.Side,
+		arg.Quantity,
+		arg.Price,
+		arg.TotalValue,
+		arg.AlpacaOrderID,
+		arg.Status,
+	)
+	return err
+}
+
 const removeFromSkipBacklog = `-- name: RemoveFromSkipBacklog :exec
 DELETE FROM skip_backlog WHERE symbol = $1
 `
@@ -940,6 +1080,22 @@ type SkipSymbolParams struct {
 // Add to skip backlog (recheck in 30 days)
 func (q *Queries) SkipSymbol(ctx context.Context, arg SkipSymbolParams) error {
 	_, err := q.db.ExecContext(ctx, skipSymbol, arg.Symbol, arg.AssetType, arg.Reason)
+	return err
+}
+
+const updateTradeStatus = `-- name: UpdateTradeStatus :exec
+UPDATE trades
+SET status = $1, filled_at = NOW()
+WHERE alpaca_order_id = $2
+`
+
+type UpdateTradeStatusParams struct {
+	Status        sql.NullString `json:"status"`
+	AlpacaOrderID sql.NullString `json:"alpaca_order_id"`
+}
+
+func (q *Queries) UpdateTradeStatus(ctx context.Context, arg UpdateTradeStatusParams) error {
+	_, err := q.db.ExecContext(ctx, updateTradeStatus, arg.Status, arg.AlpacaOrderID)
 	return err
 }
 
