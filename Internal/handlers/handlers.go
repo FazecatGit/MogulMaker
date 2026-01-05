@@ -20,7 +20,7 @@ import (
 	"github.com/fazecat/mongelmaker/interactive"
 )
 
-// ClearInputBuffer clears any remaining input from stdin
+// clears any remaining input from stdin
 func ClearInputBuffer() {
 	reader := bufio.NewReader(os.Stdin)
 	for {
@@ -532,7 +532,7 @@ func HandleScout(ctx context.Context, cfg *config.Config, q *database.Queries) {
 	bufio.NewReader(os.Stdin).ReadBytes('\n')
 }
 
-// HandleExecuteTrades displays trade signals and executes manual trades
+// displays trade signals and executes manual trades
 func HandleExecuteTrades(ctx context.Context, cfg *config.Config, q *database.Queries, client *alpaca.Client) {
 	fmt.Println("\n❌ No recent signals loaded. Run 'Analyze' first to detect trade opportunities.")
 	fmt.Println("(Manual trade feature requires signal data from screener)")
@@ -540,7 +540,7 @@ func HandleExecuteTrades(ctx context.Context, cfg *config.Config, q *database.Qu
 	fmt.Println("then ExecuteTradesFromSignals() will handle the interactive trade selection.")
 }
 
-// HandleTradeHistory displays trade history and statistics
+// displays trade history and statistics
 func HandleTradeHistory(ctx context.Context, cfg *config.Config, q *database.Queries) {
 	fmt.Println("\n=== Trade History ===")
 	var symbol string
@@ -578,6 +578,178 @@ func HandleTradeHistory(ctx context.Context, cfg *config.Config, q *database.Que
 		for _, trade := range trades {
 			fmt.Printf("  %s x %s @ %s | Total: %s | Status: %s\n",
 				trade.Side, trade.Quantity, trade.Price, trade.TotalValue, trade.Status)
+		}
+	}
+}
+
+func HandlePaperTrade(ctx context.Context, client *alpaca.Client, queries *database.Queries, cfg *config.Config) error {
+	ClearInputBuffer()
+
+	// Get symbol from user
+	fmt.Print("Enter symbol to paper trade (e.g., AAPL): ")
+	var symbol string
+	_, err := fmt.Scanln(&symbol)
+	if err != nil || symbol == "" {
+		fmt.Println("❌ Invalid symbol")
+		return fmt.Errorf("invalid symbol")
+	}
+
+	// Get quantity
+	fmt.Print("Enter quantity (default 1): ")
+	var quantity int64
+	_, err = fmt.Scanln(&quantity)
+	if err != nil || quantity < 1 {
+		quantity = 1
+	}
+
+	// Fetch bars
+	fmt.Println("📊 Fetching market data...")
+	bars, err := interactive.FetchMarketDataWithType(symbol, "1Day", 100, "", "stock")
+	if err != nil {
+		fmt.Printf("❌ Failed to fetch data: %v\n", err)
+		return err
+	}
+
+	if len(bars) == 0 {
+		fmt.Println("❌ No data returned")
+		return fmt.Errorf("no bars fetched")
+	}
+
+	// Get latest bar
+	bar := bars[len(bars)-1]
+
+	// Convert bars to closes for RSI
+	closes := make([]float64, len(bars))
+	atrBars := make([]strategy.ATRBar, len(bars))
+	for i, b := range bars {
+		closes[i] = b.Close
+		atrBars[i] = strategy.ATRBar{
+			High:  b.High,
+			Low:   b.Low,
+			Close: b.Close,
+		}
+	}
+
+	// Calculate indicators
+	rsiValues, err := strategy.CalculateRSI(closes, 14)
+	if err != nil || len(rsiValues) == 0 {
+		fmt.Println("❌ Could not calculate RSI")
+		return fmt.Errorf("RSI calculation failed")
+	}
+
+	atrValues, err := strategy.CalculateATR(atrBars, 14)
+	if err != nil || len(atrValues) == 0 {
+		fmt.Println("❌ Could not calculate ATR")
+		return fmt.Errorf("ATR calculation failed")
+	}
+
+	// Get latest indicator values
+	latestRSI := rsiValues[len(rsiValues)-1]
+	latestATR := atrValues[len(atrValues)-1]
+
+	// Get criteria from config
+	profile := cfg.Profiles["balanced"] // use default or let user select
+	criteria := strategy.ScreenerCriteria{
+		MinOversoldRSI: profile.Indicators.RSI.MinOversold,
+		MaxRSI:         profile.Indicators.RSI.MaxOverbought,
+		MinATR:         profile.Indicators.ATR.MinVolatility,
+	}
+
+	// Analyze both directions
+	longSignal := strategy.AnalyzeForLongs(bar, &latestRSI, &latestATR, criteria)
+	shortSignal := strategy.AnalyzeForShorts(bar, &latestRSI, &latestATR, criteria)
+
+	// Pick the better signal
+	var signal *strategy.TradeSignal
+	if longSignal != nil && shortSignal != nil {
+		if longSignal.Confidence >= shortSignal.Confidence {
+			signal = longSignal
+		} else {
+			signal = shortSignal
+		}
+	} else if longSignal != nil {
+		signal = longSignal
+	} else if shortSignal != nil {
+		signal = shortSignal
+	}
+
+	if signal == nil {
+		fmt.Printf("❌ No trade signal found (RSI: %.2f, ATR: %.2f)\n", latestRSI, latestATR)
+		return fmt.Errorf("no valid signal")
+	}
+
+	// Execute the trade
+	fmt.Printf("📈 Placing %s order: %s x %d @ %.2f%% confidence\n",
+		signal.Direction, symbol, quantity, signal.Confidence)
+	fmt.Printf("   Reason: %s\n", signal.Reasoning)
+
+	err = strategy.ExecuteTrade(ctx, client, symbol, quantity, signal)
+	if err != nil {
+		fmt.Printf("❌ Trade execution failed: %v\n", err)
+		return err
+	}
+
+	fmt.Println("✅ Paper trade executed!")
+	return nil
+}
+
+func HandleWatchlistMenu(ctx context.Context, cfg *config.Config, q *database.Queries) {
+	for {
+		fmt.Println("\n--- Watchlist Menu ---")
+		fmt.Println("1. Scan Watchlist")
+		fmt.Println("2. View Watchlist")
+		fmt.Println("3. Back")
+		fmt.Print("Enter choice (1-3): ")
+
+		var choice int
+		_, err := fmt.Scanln(&choice)
+		if err != nil {
+			fmt.Println("Invalid input. Try again.")
+			continue
+		}
+
+		switch choice {
+		case 1:
+			HandleScan(ctx, cfg, q)
+		case 2:
+			HandleWatchlist(ctx, q)
+		case 3:
+			return
+		default:
+			fmt.Println("Invalid choice. Try again.")
+		}
+	}
+}
+
+func HandleAnalyzeAssetType(ctx context.Context, cfg *config.Config, q *database.Queries) {
+	for {
+		fmt.Println("\n🔬 Analyze:")
+		fmt.Println("1. Stock")
+		if cfg.Features.CryptoSupport {
+			fmt.Println("2. Crypto")
+			fmt.Println("3. Back")
+		} else {
+			fmt.Println("2. Back")
+		}
+		fmt.Print("Enter choice: ")
+
+		var choice int
+		_, err := fmt.Scanln(&choice)
+		if err != nil {
+			fmt.Println("❌ Invalid input")
+			continue
+		}
+
+		if choice == 1 {
+			HandleAnalyzeSingle(ctx, "stock", datafeed.Queries)
+			ClearInputBuffer()
+		} else if choice == 2 && cfg.Features.CryptoSupport {
+			HandleAnalyzeSingle(ctx, "crypto", datafeed.Queries)
+			ClearInputBuffer()
+		} else if (choice == 2 && !cfg.Features.CryptoSupport) || (choice == 3 && cfg.Features.CryptoSupport) {
+			return
+		} else {
+			fmt.Println("❌ Invalid choice")
 		}
 	}
 }

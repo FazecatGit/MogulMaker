@@ -15,7 +15,7 @@ import (
 	"github.com/fazecat/mongelmaker/Internal/utils/config"
 )
 
-// ExecuteTradesFromSignals displays detected signals and lets user execute trades
+// displays detected signals and lets user execute trades
 func ExecuteTradesFromSignals(ctx context.Context, cfg *config.Config, scores []strategy.StockScore, client *alpaca.Client) {
 	if client == nil {
 		fmt.Println("❌ Alpaca client not initialized")
@@ -150,7 +150,7 @@ func executeShortTrade(ctx context.Context, cfg *config.Config, score strategy.S
 	}
 }
 
-// ViewTradeHistory displays past trades
+// displays past trades
 func ViewTradeHistory(ctx context.Context, symbol string) {
 	trades, err := datafeed.GetTradeHistory(ctx, symbol, 50)
 	if err != nil {
@@ -181,7 +181,7 @@ func ViewTradeHistory(ctx context.Context, symbol string) {
 	}
 }
 
-// ViewOpenTrades shows all open positions
+// shows all open positions
 func ViewOpenTrades(ctx context.Context) {
 	trades, err := datafeed.GetOpenTrades(ctx)
 	if err != nil {
