@@ -75,6 +75,11 @@ func main() {
 	go startBackgroundScanner(ctx, cfg)
 
 	for {
+		// Show alerts if there are open positions
+		if pm := handlers.GetGlobalPositionManager(); pm != nil {
+			pm.CheckMenuAlerts()
+		}
+
 		fmt.Println("\n--- MongelMaker Menu ---")
 		fmt.Println("1. Watchlist")
 		fmt.Println("2. Analyze (Stock/Crypto)")
@@ -82,7 +87,7 @@ func main() {
 		fmt.Println("4. Execute Trades")
 		fmt.Println("5. Trade History")
 		fmt.Println("6. Configure Settings")
-		fmt.Println("7. Paper Trade")
+		fmt.Println("7. Close/Sell Position")
 		fmt.Println("8. Exit")
 		fmt.Print("Enter choice (1-8): ")
 
@@ -107,7 +112,7 @@ func main() {
 		case 6:
 			config.ConfigureInteractive(cfg)
 		case 7:
-			handlers.HandlePaperTrade(ctx, alpclient, datafeed.Queries, cfg)
+			handlers.HandleClosePosition(ctx, alpclient, cfg)
 		case 8:
 			fmt.Println("Goodbye!")
 			return

@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/alpacahq/alpaca-trade-api-go/v3/alpaca"
 	datafeed "github.com/fazecat/mongelmaker/Internal/database"
@@ -19,6 +21,26 @@ import (
 	"github.com/fazecat/mongelmaker/Internal/utils/scoring"
 	"github.com/fazecat/mongelmaker/interactive"
 )
+
+// Global position manager for tracking open trades
+var (
+	globalPosManager *strategy.PositionManager
+	posManagerMutex  sync.RWMutex
+)
+
+// stores the position manager for alerts
+func SetGlobalPositionManager(pm *strategy.PositionManager) {
+	posManagerMutex.Lock()
+	defer posManagerMutex.Unlock()
+	globalPosManager = pm
+}
+
+// retrieves the position manager
+func GetGlobalPositionManager() *strategy.PositionManager {
+	posManagerMutex.RLock()
+	defer posManagerMutex.RUnlock()
+	return globalPosManager
+}
 
 // clears any remaining input from stdin
 func ClearInputBuffer() {
@@ -534,10 +556,238 @@ func HandleScout(ctx context.Context, cfg *config.Config, q *database.Queries) {
 
 // displays trade signals and executes manual trades
 func HandleExecuteTrades(ctx context.Context, cfg *config.Config, q *database.Queries, client *alpaca.Client) {
-	fmt.Println("\n❌ No recent signals loaded. Run 'Analyze' first to detect trade opportunities.")
-	fmt.Println("(Manual trade feature requires signal data from screener)")
-	fmt.Println("\nNote: To execute trades, run analysis to generate LONG/SHORT signals,")
-	fmt.Println("then ExecuteTradesFromSignals() will handle the interactive trade selection.")
+	ClearInputBuffer()
+
+	separator := "============================================================"
+	fmt.Println("\n" + separator)
+	fmt.Println("🚀 LIVE TRADE EXECUTION")
+	fmt.Println(separator)
+
+	// Get account info
+	account, err := client.GetAccount()
+	if err != nil {
+		fmt.Printf("❌ Failed to get account info: %v\n", err)
+		return
+	}
+
+	accountValueFloat, _ := account.Equity.Float64()
+	accountValue := accountValueFloat
+	fmt.Printf("💰 Account Balance: $%.2f\n", accountValue)
+
+	// Create position manager with safety limits
+	orderConfig := &strategy.OrderConfig{
+		MaxPortfolioPercent:   20.0, // Max 20% of account per trade
+		MaxOpenPositions:      5,    // Max 5 concurrent trades
+		StopLossPercent:       2.0,  // 2% stop loss
+		TakeProfitPercent:     5.0,  // 5% take profit
+		SafeBailPercent:       3.0,  // 3% safe bail for partial exit
+		MaxDailyLossPercent:   -2.0, // Stop if daily loss exceeds -2%
+		PartialExitPercentage: 0.5,  // Exit 50% at take profit
+	}
+
+	posManager := strategy.NewPositionManager(client, orderConfig)
+
+	// Store globally so menu can access alerts
+	SetGlobalPositionManager(posManager)
+
+	// Get user input
+	fmt.Print("\nEnter symbol to trade (e.g., AAPL): ")
+	var symbol string
+	_, err = fmt.Scanln(&symbol)
+	if err != nil || symbol == "" {
+		fmt.Println("❌ Invalid symbol")
+		return
+	}
+
+	fmt.Print("Enter direction (LONG/SHORT): ")
+	var direction string
+	_, err = fmt.Scanln(&direction)
+	if err != nil {
+		fmt.Println("❌ Invalid direction")
+		return
+	}
+
+	if direction != "LONG" && direction != "SHORT" {
+		fmt.Println("❌ Direction must be LONG or SHORT")
+		return
+	}
+
+	fmt.Print("Enter quantity (or 0 to auto-calculate): ")
+	var quantity int64
+	_, err = fmt.Scanln(&quantity)
+	if err != nil || quantity < 0 {
+		fmt.Println("❌ Invalid quantity")
+		return
+	}
+
+	// Fetch current market data
+	fmt.Println("\n📊 Fetching market data...")
+	bars, err := interactive.FetchMarketDataWithType(symbol, "1Day", 100, "", "stock")
+	if err != nil {
+		fmt.Printf("❌ Failed to fetch data: %v\n", err)
+		return
+	}
+
+	if len(bars) == 0 {
+		fmt.Println("❌ No market data available")
+		return
+	}
+
+	bar := bars[len(bars)-1]
+	entryPrice := bar.Close
+
+	// Calculate price targets
+	stopLoss, takeProfit := strategy.CalculatePriceTargets(entryPrice, direction, orderConfig)
+	safeBail := 0.0
+	if direction == "LONG" {
+		safeBail = entryPrice * (1 + (orderConfig.SafeBailPercent / 100))
+	} else {
+		safeBail = entryPrice * (1 - (orderConfig.SafeBailPercent / 100))
+	}
+
+	// Auto-calculate quantity if needed
+	if quantity == 0 {
+		quantity = strategy.CalculatePositionSize(accountValue, entryPrice, stopLoss, orderConfig.MaxPortfolioPercent, orderConfig)
+		fmt.Printf("📐 Auto-calculated quantity: %d shares\n", quantity)
+	}
+
+	// Create order request
+	orderReq := &strategy.OrderRequest{
+		Symbol:           symbol,
+		Quantity:         quantity,
+		Direction:        direction,
+		SignalConfidence: 75.0, // Default confidence for manual trades
+		TradeReason:      "Manual execution from HandleExecuteTrades",
+		StopLossPrice:    stopLoss,
+		TakeProfitPrice:  takeProfit,
+		EntryPrice:       entryPrice,
+		UseStopOrder:     true,
+		UseLimitOrder:    false,
+	}
+
+	// Validate order
+	openPositions := posManager.CountOpenPositions()
+	dailyLoss := posManager.GetDailyLoss()
+
+	validation := strategy.ValidateOrder(orderReq, orderConfig, accountValue, openPositions, dailyLoss)
+
+	if !validation.IsValid {
+		fmt.Println("❌ ORDER VALIDATION FAILED:")
+		for _, issue := range validation.Issues {
+			fmt.Printf("   • %s\n", issue)
+		}
+		return
+	}
+
+	// Display order preview
+	fmt.Println("\n" + separator)
+	fmt.Println("📋 ORDER PREVIEW")
+	fmt.Println(separator)
+	fmt.Printf("Symbol:              %s\n", orderReq.Symbol)
+	fmt.Printf("Direction:           %s\n", orderReq.Direction)
+	fmt.Printf("Quantity:            %d shares\n", orderReq.Quantity)
+	fmt.Printf("Entry Price:         $%.2f\n", orderReq.EntryPrice)
+	fmt.Printf("Stop Loss:           $%.2f (%.2f%% below entry)\n", stopLoss, orderConfig.StopLossPercent)
+	fmt.Printf("Take Profit:         $%.2f (%.2f%% above entry)\n", takeProfit, orderConfig.TakeProfitPercent)
+	fmt.Printf("Safe Bail:           $%.2f\n", safeBail)
+	fmt.Printf("Max Risk:            $%.2f (%.2f%% of portfolio)\n", validation.RiskAmount, validation.PortfolioRisk)
+	fmt.Printf("Potential Gain:      $%.2f\n", validation.PotentialGain)
+	fmt.Printf("Risk/Reward Ratio:   1:%.2f\n", validation.PotentialGain/validation.RiskAmount)
+	fmt.Println(separator)
+
+	// Confirm trade
+	fmt.Print("\n⚠️  CONFIRM TRADE? (yes/no): ")
+	var confirm string
+	_, err = fmt.Scanln(&confirm)
+	if err != nil || (confirm != "yes" && confirm != "y") {
+		fmt.Println("❌ Trade cancelled")
+		return
+	}
+
+	// Build Alpaca order
+	alpacaOrder, err := strategy.BuildPlaceOrderRequest(orderReq)
+	if err != nil {
+		fmt.Printf("❌ Failed to build order: %v\n", err)
+		return
+	}
+
+	// Execute trade
+	fmt.Println("\n⏳ Executing trade...")
+	order, err := client.PlaceOrder(*alpacaOrder)
+	if err != nil {
+		fmt.Printf("❌ Trade execution failed: %v\n", err)
+		return
+	}
+
+	// Add to position manager
+	signal := &strategy.TradeSignal{
+		Direction:  direction,
+		Confidence: orderReq.SignalConfidence,
+		Reasoning:  orderReq.TradeReason,
+	}
+
+	posManager.AddPosition(order, signal, entryPrice, stopLoss, takeProfit, safeBail)
+
+	// Log execution
+	strategy.LogOrderExecution(orderReq, validation, order.ID)
+
+	fmt.Println("\n✅ TRADE EXECUTED SUCCESSFULLY!")
+	fmt.Printf("Order ID: %s | Status: %s\n", order.ID, order.Status)
+
+	// Start monitoring position
+	fmt.Println("\n📡 Position monitoring enabled. Press Ctrl+C to stop.")
+	go posManager.MonitorPositions(ctx, 5*time.Second)
+
+	// Keep monitoring until user interrupts
+	select {
+	case <-ctx.Done():
+		fmt.Println("Position monitoring stopped")
+	}
+}
+
+// HandleClosePosition closes/sells an open position
+func HandleClosePosition(ctx context.Context, client *alpaca.Client, cfg *config.Config) {
+	ClearInputBuffer()
+
+	separator := "============================================================"
+	fmt.Println("\n" + separator)
+	fmt.Println("🔴 CLOSE/SELL POSITION")
+	fmt.Println(separator)
+
+	// Simple approach - ask user for symbol to close
+	fmt.Print("\nEnter symbol to close (e.g., AAPL): ")
+	var symbol string
+	_, err := fmt.Scanln(&symbol)
+	if err != nil || symbol == "" {
+		fmt.Println("❌ Invalid symbol")
+		return
+	}
+
+	// Confirm close
+	fmt.Printf("\n⚠️  Close all positions for %s? (yes/no): ", symbol)
+	var confirm string
+	_, err = fmt.Scanln(&confirm)
+	if err != nil || (confirm != "yes" && confirm != "y") {
+		fmt.Println("❌ Close cancelled")
+		return
+	}
+
+	// Close the position
+	fmt.Println("\n⏳ Closing position...")
+	order, err := client.ClosePosition(symbol, alpaca.ClosePositionRequest{})
+	if err != nil {
+		fmt.Printf("❌ Failed to close position: %v\n", err)
+		return
+	}
+
+	fmt.Println("\n✅ POSITION CLOSED SUCCESSFULLY!")
+	fmt.Printf("Symbol: %s\n", order.Symbol)
+	fmt.Printf("Order ID: %s | Status: %s\n", order.ID, order.Status)
+	if order.FilledAvgPrice != nil {
+		avgPrice, _ := order.FilledAvgPrice.Float64()
+		fmt.Printf("Filled Avg Price: $%.2f\n", avgPrice)
+	}
+	fmt.Println(separator)
 }
 
 // displays trade history and statistics
@@ -580,117 +830,6 @@ func HandleTradeHistory(ctx context.Context, cfg *config.Config, q *database.Que
 				trade.Side, trade.Quantity, trade.Price, trade.TotalValue, trade.Status)
 		}
 	}
-}
-
-func HandlePaperTrade(ctx context.Context, client *alpaca.Client, queries *database.Queries, cfg *config.Config) error {
-	ClearInputBuffer()
-
-	// Get symbol from user
-	fmt.Print("Enter symbol to paper trade (e.g., AAPL): ")
-	var symbol string
-	_, err := fmt.Scanln(&symbol)
-	if err != nil || symbol == "" {
-		fmt.Println("❌ Invalid symbol")
-		return fmt.Errorf("invalid symbol")
-	}
-
-	// Get quantity
-	fmt.Print("Enter quantity (default 1): ")
-	var quantity int64
-	_, err = fmt.Scanln(&quantity)
-	if err != nil || quantity < 1 {
-		quantity = 1
-	}
-
-	// Fetch bars
-	fmt.Println("📊 Fetching market data...")
-	bars, err := interactive.FetchMarketDataWithType(symbol, "1Day", 100, "", "stock")
-	if err != nil {
-		fmt.Printf("❌ Failed to fetch data: %v\n", err)
-		return err
-	}
-
-	if len(bars) == 0 {
-		fmt.Println("❌ No data returned")
-		return fmt.Errorf("no bars fetched")
-	}
-
-	// Get latest bar
-	bar := bars[len(bars)-1]
-
-	// Convert bars to closes for RSI
-	closes := make([]float64, len(bars))
-	atrBars := make([]strategy.ATRBar, len(bars))
-	for i, b := range bars {
-		closes[i] = b.Close
-		atrBars[i] = strategy.ATRBar{
-			High:  b.High,
-			Low:   b.Low,
-			Close: b.Close,
-		}
-	}
-
-	// Calculate indicators
-	rsiValues, err := strategy.CalculateRSI(closes, 14)
-	if err != nil || len(rsiValues) == 0 {
-		fmt.Println("❌ Could not calculate RSI")
-		return fmt.Errorf("RSI calculation failed")
-	}
-
-	atrValues, err := strategy.CalculateATR(atrBars, 14)
-	if err != nil || len(atrValues) == 0 {
-		fmt.Println("❌ Could not calculate ATR")
-		return fmt.Errorf("ATR calculation failed")
-	}
-
-	// Get latest indicator values
-	latestRSI := rsiValues[len(rsiValues)-1]
-	latestATR := atrValues[len(atrValues)-1]
-
-	// Get criteria from config
-	profile := cfg.Profiles["balanced"] // use default or let user select
-	criteria := strategy.ScreenerCriteria{
-		MinOversoldRSI: profile.Indicators.RSI.MinOversold,
-		MaxRSI:         profile.Indicators.RSI.MaxOverbought,
-		MinATR:         profile.Indicators.ATR.MinVolatility,
-	}
-
-	// Analyze both directions
-	longSignal := strategy.AnalyzeForLongs(bar, &latestRSI, &latestATR, criteria)
-	shortSignal := strategy.AnalyzeForShorts(bar, &latestRSI, &latestATR, criteria)
-
-	// Pick the better signal
-	var signal *strategy.TradeSignal
-	if longSignal != nil && shortSignal != nil {
-		if longSignal.Confidence >= shortSignal.Confidence {
-			signal = longSignal
-		} else {
-			signal = shortSignal
-		}
-	} else if longSignal != nil {
-		signal = longSignal
-	} else if shortSignal != nil {
-		signal = shortSignal
-	}
-
-	if signal == nil {
-		fmt.Printf("❌ No trade signal found (RSI: %.2f, ATR: %.2f)\n", latestRSI, latestATR)
-		return fmt.Errorf("no valid signal")
-	}
-
-	// Execute the trade
-	fmt.Printf("📈 Placing %s order: %s x %d @ %.2f%% confidence\n",
-		signal.Direction, symbol, quantity, signal.Confidence)
-	fmt.Printf("   Reason: %s\n", signal.Reasoning)
-
-	err = strategy.ExecuteTrade(ctx, client, symbol, quantity, signal)
-	if err != nil {
-		fmt.Printf("❌ Trade execution failed: %v\n", err)
-		return err
-	}
-
-	fmt.Println("✅ Paper trade executed!")
-	return nil
 }
 
 func HandleWatchlistMenu(ctx context.Context, cfg *config.Config, q *database.Queries) {
