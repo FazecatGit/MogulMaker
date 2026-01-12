@@ -24,8 +24,7 @@ Alas, if you want to include Finnhubb (newscraping API) for the Stock you have s
 
 # Usage
 
-The usage of this product is for you to lazily trade without the need to spend hours of looking for the right stock with the score adjusted to your theory with patterns of charts and certain news outlets of it.
-But of course, this still needs to be tested extensivlely and will try my best to make sure it does well, as this project was again made for learning.
+-v is turn on verbose mode 
 
 ## Contributing
 
