@@ -38,9 +38,9 @@ func TestCalculateTrueRange(t *testing.T) {
 	}{
 		{high: 15.0, low: 10.0, prevClose: 12.0, expected: 5.0},
 		{high: 16.0, low: 11.0, prevClose: 15.0, expected: 5.0},
-		{high: 18.0, low: 14.0, prevClose: 17.0, expected: 5.0},
+		{high: 18.0, low: 14.0, prevClose: 17.0, expected: 4.0},
 		{high: 20.0, low: 15.0, prevClose: 19.0, expected: 5.0},
-		{high: 22.0, low: 18.0, prevClose: 21.0, expected: 5.0},
+		{high: 22.0, low: 18.0, prevClose: 21.0, expected: 4.0},
 	}
 	for _, tt := range tests {
 		tr := CalculateTrueRange(tt.high, tt.low, tt.prevClose)

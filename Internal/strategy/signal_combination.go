@@ -22,6 +22,18 @@ type CombinedSignal struct {
 	Components     []SignalComponent
 }
 
+// MultiTimeframeSignal represents signals from different timeframes
+type MultiTimeframeSignal struct {
+	DailySignal      CombinedSignal
+	FourHourSignal   CombinedSignal
+	OneHourSignal    CombinedSignal
+	Alignment        bool    // true if signals agree on direction
+	AlignmentPercent float64 // % of timeframes aligned
+	CompositeScore   float64
+	Confidence       float64
+	RecommendedTrade string
+}
+
 // converts RSI value into score
 func calculateRSIScore(rsi float64) float64 {
 	if rsi < 35 {
@@ -194,6 +206,82 @@ func CalculateSignal(
 	}
 }
 
+// CombineMultiTimeframeSignals analyzes alignment across timeframes
+// Reduces false signals by requiring confirmation across timeframes
+func CombineMultiTimeframeSignals(daily, fourHour, oneHour CombinedSignal) MultiTimeframeSignal {
+	result := MultiTimeframeSignal{
+		DailySignal:      daily,
+		FourHourSignal:   fourHour,
+		OneHourSignal:    oneHour,
+		Alignment:        false,
+		AlignmentPercent: 0.0,
+	}
+
+	// Extract signal directions (BUY/ACCUMULATE = bullish, SELL/DISTRIBUTE = bearish)
+	dailyBullish := daily.Recommendation == "BUY" || daily.Recommendation == "ACCUMULATE"
+	dailyBearish := daily.Recommendation == "SELL" || daily.Recommendation == "DISTRIBUTE"
+
+	fourHourBullish := fourHour.Recommendation == "BUY" || fourHour.Recommendation == "ACCUMULATE"
+	fourHourBearish := fourHour.Recommendation == "SELL" || fourHour.Recommendation == "DISTRIBUTE"
+
+	oneHourBullish := oneHour.Recommendation == "BUY" || oneHour.Recommendation == "ACCUMULATE"
+	oneHourBearish := oneHour.Recommendation == "SELL" || oneHour.Recommendation == "DISTRIBUTE"
+
+	// Count alignments
+	alignedCount := 0
+	totalTimeframes := 3
+
+	if (dailyBullish && fourHourBullish) || (dailyBearish && fourHourBearish) {
+		alignedCount++
+	}
+	if (fourHourBullish && oneHourBullish) || (fourHourBearish && oneHourBearish) {
+		alignedCount++
+	}
+	if (dailyBullish && oneHourBullish) || (dailyBearish && oneHourBearish) {
+		alignedCount++
+	}
+
+	result.AlignmentPercent = (float64(alignedCount) / float64(totalTimeframes)) * 100.0
+
+	// Strong alignment = at least 2 timeframes agree
+	result.Alignment = alignedCount >= 2
+
+	// Calculate composite score: Weight daily heavier for trend confirmation
+	result.CompositeScore = (daily.Score * 0.5) + (fourHour.Score * 0.35) + (oneHour.Score * 0.15)
+
+	// Average confidence
+	result.Confidence = (daily.Confidence + fourHour.Confidence + oneHour.Confidence) / 3.0
+
+	// Determine recommended trade
+	if result.Alignment {
+		if dailyBullish && fourHourBullish {
+			result.RecommendedTrade = "BUY"
+		} else if dailyBearish && fourHourBearish {
+			result.RecommendedTrade = "SELL"
+		}
+	} else {
+		result.RecommendedTrade = "WAIT - Timeframes not aligned"
+	}
+
+	return result
+}
+
+// IsMultiTimeframeConfirmed checks if signal is strong enough to execute
+// Goal: Reduce false signals by ~60% through multi-timeframe confirmation
+func (m *MultiTimeframeSignal) IsMultiTimeframeConfirmed(requireStrongAlignment bool) bool {
+	if requireStrongAlignment {
+		// Strict: Daily + 4H must agree, 1H should not contradict
+		if !m.Alignment {
+			return false
+		}
+		// Additional check: daily trend is primary
+		return m.DailySignal.Confidence > 50.0 && m.FourHourSignal.Confidence > 50.0
+	}
+
+	// Loose: Any 2 timeframes aligned
+	return m.AlignmentPercent >= 66.0 // 2 out of 3 aligned
+}
+
 func FormatSignal(signal CombinedSignal) string {
 	emoji := "⏸️"
 	if signal.Recommendation == "BUY" || signal.Recommendation == "ACCUMULATE" {
@@ -207,5 +295,29 @@ func FormatSignal(signal CombinedSignal) string {
 		signal.Recommendation,
 		signal.Confidence,
 		signal.Reasoning,
+	)
+}
+
+// FormatMultiTimeframeSignal provides detailed multi-timeframe analysis output
+func FormatMultiTimeframeSignal(signal MultiTimeframeSignal) string {
+	alignment := "❌"
+	if signal.Alignment {
+		alignment = "✅"
+	}
+
+	return fmt.Sprintf(`
+📊 Multi-Timeframe Analysis:
+  Daily:    %s (%.0f%%)
+  4H:       %s (%.0f%%)
+  1H:       %s (%.0f%%)
+  
+  %s Alignment: %.0f%% | Composite Score: %.2f | Confidence: %.0f%%
+  📈 Recommended: %s
+`,
+		signal.DailySignal.Recommendation, signal.DailySignal.Confidence,
+		signal.FourHourSignal.Recommendation, signal.FourHourSignal.Confidence,
+		signal.OneHourSignal.Recommendation, signal.OneHourSignal.Confidence,
+		alignment, signal.AlignmentPercent, signal.CompositeScore, signal.Confidence,
+		signal.RecommendedTrade,
 	)
 }
