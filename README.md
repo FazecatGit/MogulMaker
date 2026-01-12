@@ -1,4 +1,4 @@
-# MongelMaker
+## MongelMaker
 
 # Description 
 
@@ -27,5 +27,20 @@ Alas, if you want to include Finnhubb (newscraping API) for the Stock you have s
 The usage of this product is for you to lazily trade without the need to spend hours of looking for the right stock with the score adjusted to your theory with patterns of charts and certain news outlets of it.
 But of course, this still needs to be tested extensivlely and will try my best to make sure it does well, as this project was again made for learning.
 
-# Contributing 
-A solo project, with the help of AI to help with syntax errors and workflows with my previous code.
+## Contributing
+
+### Clone the repo
+
+```bash
+git clone https://github.com/fazecatGit/MongelMaker.git
+cd MongelMaker
+
+# Install Go 1.19+ if you haven't already
+# Set up your environment variables (create a .env file with your API keys)
+cp .env.example .env
+
+Build the application
+go build -o mongelmaker
+
+Once on the Root of the file
+go run . OR go run main.go
