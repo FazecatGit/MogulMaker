@@ -11,7 +11,11 @@ import (
 	"github.com/alpacahq/alpaca-trade-api-go/v3/alpaca"
 	datafeed "github.com/fazecat/mongelmaker/Internal/database"
 	"github.com/fazecat/mongelmaker/Internal/handlers"
+	"github.com/fazecat/mongelmaker/Internal/handlers/monitoring"
+	"github.com/fazecat/mongelmaker/Internal/handlers/risk"
 	newsscraping "github.com/fazecat/mongelmaker/Internal/news_scraping"
+	"github.com/fazecat/mongelmaker/Internal/strategy"
+	"github.com/fazecat/mongelmaker/Internal/strategy/position"
 	"github.com/fazecat/mongelmaker/Internal/utils"
 	"github.com/fazecat/mongelmaker/Internal/utils/config"
 	"github.com/fazecat/mongelmaker/Internal/utils/scanner"
@@ -62,6 +66,39 @@ func main() {
 	status, isOpen := utils.CheckMarketStatus(time.Now(), cfg)
 	fmt.Printf("📊 Market Status: %s (Open: %v)\n\n", status, isOpen)
 
+	// Get account balance for risk manager
+	account, err := alpclient.GetAccount()
+	if err != nil {
+		log.Printf("Warning: Could not fetch account for risk manager: %v\n", err)
+	}
+
+	// Initialize Risk Manager
+	var riskMgr *risk.Manager
+	if account != nil {
+		accountEquity, _ := account.Equity.Float64()
+		riskMgr = risk.NewManager(alpclient, accountEquity)
+		log.Println("✅ Risk Manager initialized")
+	} else {
+		log.Println("⚠️  Risk Manager could not be initialized - account data unavailable")
+	}
+
+	// Initialize Position Manager for Trade Monitor
+	orderConfig := &strategy.OrderConfig{
+		MaxOpenPositions:      5,
+		MaxPortfolioPercent:   20.0,
+		StopLossPercent:       2.0,
+		TakeProfitPercent:     5.0,
+		SafeBailPercent:       3.0,
+		MaxDailyLossPercent:   -2.0,
+		PartialExitPercentage: 0.5,
+	}
+	posManager := position.NewPositionManager(alpclient, orderConfig)
+
+	// Initialize Trade Monitor
+	tradeMon := monitoring.NewMonitor(posManager, riskMgr)
+	log.Println("✅ Trade Monitor initialized")
+	log.Println("📌 Note: Previously executed trades will be loaded when Trade Monitor is accessed")
+
 	// for the scouting feature
 	err = datafeed.InitAlpacaClient()
 	if err != nil {
@@ -88,8 +125,10 @@ func main() {
 		fmt.Println("5. Trade History")
 		fmt.Println("6. Configure Settings")
 		fmt.Println("7. Close/Sell Position")
-		fmt.Println("8. Exit")
-		fmt.Print("Enter choice (1-8): ")
+		fmt.Println("8. Risk Manager Dashboard")
+		fmt.Println("9. Trade Monitor")
+		fmt.Println("10. Exit")
+		fmt.Print("Enter choice (1-10): ")
 
 		var choice int
 		_, err := fmt.Scanln(&choice)
@@ -114,6 +153,10 @@ func main() {
 		case 7:
 			handlers.HandleClosePosition(ctx, alpclient, cfg)
 		case 8:
+			handlers.HandleDisplayRiskManager(riskMgr, posManager)
+		case 9:
+			handlers.HandleDisplayTradeMonitor(tradeMon)
+		case 10:
 			fmt.Println("Goodbye!")
 			return
 		default:

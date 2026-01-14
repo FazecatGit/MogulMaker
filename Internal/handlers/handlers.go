@@ -14,8 +14,11 @@ import (
 	datafeed "github.com/fazecat/mongelmaker/Internal/database"
 	database "github.com/fazecat/mongelmaker/Internal/database/sqlc"
 	"github.com/fazecat/mongelmaker/Internal/database/watchlist"
+	"github.com/fazecat/mongelmaker/Internal/handlers/risk"
 	newsscraping "github.com/fazecat/mongelmaker/Internal/news_scraping"
 	"github.com/fazecat/mongelmaker/Internal/strategy"
+	positionPkg "github.com/fazecat/mongelmaker/Internal/strategy/position"
+	"github.com/fazecat/mongelmaker/Internal/types"
 	"github.com/fazecat/mongelmaker/Internal/utils/config"
 	"github.com/fazecat/mongelmaker/Internal/utils/scanner"
 	"github.com/fazecat/mongelmaker/Internal/utils/scoring"
@@ -24,19 +27,19 @@ import (
 
 // Global position manager for tracking open trades
 var (
-	globalPosManager *strategy.PositionManager
+	globalPosManager *positionPkg.PositionManager
 	posManagerMutex  sync.RWMutex
 )
 
 // stores the position manager for alerts
-func SetGlobalPositionManager(pm *strategy.PositionManager) {
+func SetGlobalPositionManager(pm *positionPkg.PositionManager) {
 	posManagerMutex.Lock()
 	defer posManagerMutex.Unlock()
 	globalPosManager = pm
 }
 
 // retrieves the position manager
-func GetGlobalPositionManager() *strategy.PositionManager {
+func GetGlobalPositionManager() *positionPkg.PositionManager {
 	posManagerMutex.RLock()
 	defer posManagerMutex.RUnlock()
 	return globalPosManager
@@ -585,7 +588,7 @@ func HandleExecuteTrades(ctx context.Context, cfg *config.Config, q *database.Qu
 		PartialExitPercentage: 0.5,  // Exit 50% at take profit
 	}
 
-	posManager := strategy.NewPositionManager(client, orderConfig)
+	posManager := positionPkg.NewPositionManager(client, orderConfig)
 
 	// Store globally so menu can access alerts
 	SetGlobalPositionManager(posManager)
@@ -720,7 +723,7 @@ func HandleExecuteTrades(ctx context.Context, cfg *config.Config, q *database.Qu
 	}
 
 	// Add to position manager
-	signal := &strategy.TradeSignal{
+	signal := &types.TradeSignal{
 		Direction:  direction,
 		Confidence: orderReq.SignalConfidence,
 		Reasoning:  orderReq.TradeReason,
@@ -811,6 +814,10 @@ func HandleTradeHistory(ctx context.Context, cfg *config.Config, q *database.Que
 				fmt.Printf("  %s | %s x %s @ %s | Status: %s\n",
 					trade.Symbol, trade.Side, trade.Quantity, trade.Price, trade.Status)
 			}
+		} else {
+			fmt.Println("\n📝 No trades found in database")
+			fmt.Println("💡 Tip: Trades are logged to the database when executed through MongelMaker")
+			fmt.Println("   Your open positions in Alpaca can be viewed in the Trade Monitor (Option 9)")
 		}
 	} else {
 		trades, err := datafeed.GetTradeHistory(ctx, symbol, 50)
@@ -820,7 +827,9 @@ func HandleTradeHistory(ctx context.Context, cfg *config.Config, q *database.Que
 		}
 
 		if len(trades) == 0 {
-			fmt.Println("No trades found")
+			fmt.Println("\n📝 No trades found for " + symbol)
+			fmt.Println("💡 Tip: Trades are logged to the database when executed through MongelMaker")
+			fmt.Println("   Your open positions in Alpaca can be viewed in the Trade Monitor (Option 9)")
 			return
 		}
 
@@ -890,5 +899,69 @@ func HandleAnalyzeAssetType(ctx context.Context, cfg *config.Config, q *database
 		} else {
 			fmt.Println("❌ Invalid choice")
 		}
+	}
+}
+
+// HandleDisplayRiskManager shows the portfolio risk report
+func HandleDisplayRiskManager(riskManager interface{}, positionManager interface{}) {
+	// Use type assertion directly instead of reflection
+	rm, ok := riskManager.(*risk.Manager)
+	if !ok || rm == nil {
+		fmt.Println("⚠️  Risk Manager not available yet")
+		return
+	}
+
+	// Get open positions from position manager
+	var positions []*positionPkg.OpenPosition
+	if pm, ok := positionManager.(*positionPkg.PositionManager); ok && pm != nil {
+		// Sync with Alpaca first
+		ctx := context.Background()
+		if err := pm.SyncFromAlpaca(ctx); err != nil {
+			fmt.Printf("Warning: Could not sync positions: %v\n", err)
+		}
+		positions = pm.GetOpenPositions()
+	}
+
+	// Generate and display report
+	report := rm.GenerateRiskReport(positions)
+	report.Print()
+}
+
+// HandleDisplayTradeMonitor shows the trade statistics and open positions
+func HandleDisplayTradeMonitor(tradeMonitor interface{}) {
+	type Monitor interface {
+		PrintStatsReport()
+		PrintOpenPositions()
+	}
+
+	if tm, ok := tradeMonitor.(Monitor); ok {
+		// Show menu for what to display
+		fmt.Println("\n📊 Trade Monitor Menu:")
+		fmt.Println("1. Open Positions")
+		fmt.Println("2. Trade Statistics")
+		fmt.Println("3. Both")
+		fmt.Println("4. Back")
+		fmt.Print("Enter choice (1-4): ")
+
+		var choice int
+		_, err := fmt.Scanln(&choice)
+		if err != nil || choice < 1 || choice > 4 {
+			fmt.Println("❌ Invalid choice")
+			return
+		}
+
+		switch choice {
+		case 1:
+			tm.PrintOpenPositions()
+		case 2:
+			tm.PrintStatsReport()
+		case 3:
+			tm.PrintOpenPositions()
+			tm.PrintStatsReport()
+		case 4:
+			return
+		}
+	} else {
+		fmt.Println("⚠️  Trade Monitor not available yet")
 	}
 }

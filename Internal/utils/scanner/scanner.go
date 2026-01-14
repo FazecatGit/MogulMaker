@@ -9,6 +9,8 @@ import (
 	db "github.com/fazecat/mongelmaker/Internal/database"
 	database "github.com/fazecat/mongelmaker/Internal/database/sqlc"
 	"github.com/fazecat/mongelmaker/Internal/strategy"
+	"github.com/fazecat/mongelmaker/Internal/strategy/detection"
+	"github.com/fazecat/mongelmaker/Internal/strategy/indicators"
 	"github.com/fazecat/mongelmaker/Internal/types"
 	"github.com/fazecat/mongelmaker/Internal/utils/analyzer"
 	"github.com/fazecat/mongelmaker/Internal/utils/config"
@@ -45,14 +47,14 @@ func PerformScan(ctx context.Context, profileName string, cfg *config.Config, q 
 		}
 
 		// Calculate indicators
-		vwapCalc := strategy.NewVWAPCalculator(bars)
+		vwapCalc := indicators.NewVWAPCalculator(bars)
 		vwapPrice := vwapCalc.Calculate()
 
 		closes := make([]float64, len(bars))
 		for i, bar := range bars {
 			closes[i] = bar.Close
 		}
-		rsiValues, err := strategy.CalculateRSI(closes, 14)
+		rsiValues, err := indicators.CalculateRSI(closes, 14)
 		if err != nil {
 			rsiValues = []float64{50}
 		}
@@ -77,7 +79,7 @@ func PerformScan(ctx context.Context, profileName string, cfg *config.Config, q 
 			db.SaveATR(symbol, latestTimestamp, atrValue)
 		}
 
-		whaleEvents := strategy.DetectWhales("", bars)
+		whaleEvents := detection.DetectWhales("", bars)
 		whaleCount := len(whaleEvents)
 
 		scoringInput, err := scoring.BuildScoringInput(bars, vwapPrice, rsiValue, whaleCount, atrValue, atrCategory)
@@ -86,7 +88,7 @@ func PerformScan(ctx context.Context, profileName string, cfg *config.Config, q 
 		}
 
 		weights := cfg.Profiles[profileName].SignalWeights
-		score := strategy.CalculateInterestScore(scoringInput, weights)
+		score := detection.CalculateInterestScore(scoringInput, weights)
 
 		err = q.UpdateWatchlistScore(ctx, database.UpdateWatchlistScoreParams{
 			Score:  float32(score),

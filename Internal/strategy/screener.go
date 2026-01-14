@@ -11,6 +11,9 @@ import (
 
 	datafeed "github.com/fazecat/mongelmaker/Internal/database"
 	. "github.com/fazecat/mongelmaker/Internal/news_scraping"
+	"github.com/fazecat/mongelmaker/Internal/strategy/detection"
+	"github.com/fazecat/mongelmaker/Internal/strategy/indicators"
+	signalsPkg "github.com/fazecat/mongelmaker/Internal/strategy/signals"
 	"github.com/fazecat/mongelmaker/Internal/utils"
 	"github.com/fazecat/mongelmaker/Internal/utils/config"
 )
@@ -30,7 +33,7 @@ type StockScore struct {
 	ATR            *float64
 	NewsSentiment  SentimentScore
 	NewsImpact     float64
-	FinalSignal    CombinedSignal
+	FinalSignal    signalsPkg.CombinedSignal
 	Recommendation string
 	LongSignal     *TradeSignal
 	ShortSignal    *TradeSignal
@@ -161,7 +164,7 @@ func scoreStockWithType(symbol, timeframe string, numBars int, criteria Screener
 		}
 	}
 
-	whales := DetectWhales(symbol, bars)
+	whales := detection.DetectWhales(symbol, bars)
 	if len(whales) > 0 {
 		for _, whale := range whales {
 			if whale.Conviction == "HIGH" {
@@ -171,8 +174,8 @@ func scoreStockWithType(symbol, timeframe string, numBars int, criteria Screener
 		}
 	}
 
-	support := FindSupport(bars)
-	resistance := FindResistance(bars)
+	support := indicators.FindSupport(bars)
+	resistance := indicators.FindResistance(bars)
 
 	currentPrice := latestBar.Close
 	if currentPrice < support*1.01 {
@@ -184,9 +187,9 @@ func scoreStockWithType(symbol, timeframe string, numBars int, criteria Screener
 		signals = append(signals, fmt.Sprintf("Near Resistance: $%.2f", resistance))
 	}
 
-	combinedSignal := CalculateSignal(rsi, atr, bars, symbol, "")
+	combinedSignal := signalsPkg.CalculateSignal(rsi, atr, bars, symbol, "")
 
-	signals = append(signals, fmt.Sprintf("\n🎯 FINAL: %s", FormatSignal(combinedSignal)))
+	signals = append(signals, fmt.Sprintf("\n🎯 FINAL: %s", signalsPkg.FormatSignal(combinedSignal)))
 
 	longSignal = AnalyzeForLongs(latestBar, rsi, atr, criteria)
 	shortSignal = AnalyzeForShorts(latestBar, rsi, atr, criteria)

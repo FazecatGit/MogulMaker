@@ -9,6 +9,8 @@ import (
 	sqlc "github.com/fazecat/mongelmaker/Internal/database/sqlc"
 	"github.com/fazecat/mongelmaker/Internal/export"
 	"github.com/fazecat/mongelmaker/Internal/strategy"
+	"github.com/fazecat/mongelmaker/Internal/strategy/indicators"
+	"github.com/fazecat/mongelmaker/Internal/strategy/signals"
 	"github.com/fazecat/mongelmaker/Internal/types"
 	"github.com/fazecat/mongelmaker/Internal/utils"
 	"github.com/fazecat/mongelmaker/Internal/utils/analyzer"
@@ -169,7 +171,7 @@ func DisplayAnalyticsData(bars []datafeed.Bar, symbol string, timeframe string, 
 			closes[i] = bar.Close
 		}
 
-		rsiValues, err := strategy.CalculateRSI(closes, 14)
+		rsiValues, err := indicators.CalculateRSI(closes, 14)
 		if err == nil && len(rsiValues) > 0 {
 			// Map RSI values to timestamps
 			startIdx := len(bars) - len(rsiValues)
@@ -262,7 +264,7 @@ func DisplayAnalyticsData(bars []datafeed.Bar, symbol string, timeframe string, 
 		signalStr := ""
 
 		if hasRSI {
-			rsiSignal := strategy.DetermineRSISignal(rsiVal)
+			rsiSignal := indicators.DetermineRSISignal(rsiVal)
 			switch rsiSignal {
 			case "overbought":
 				signalStr += "📈 Overbought"
@@ -290,7 +292,7 @@ func DisplayAnalyticsData(bars []datafeed.Bar, symbol string, timeframe string, 
 		if hasATR {
 
 			atrThreshold := bar.Close * 0.01
-			atrSignal := strategy.DetermineATRSignal(atrVal, atrThreshold)
+			atrSignal := indicators.DetermineATRSignal(atrVal, atrThreshold)
 
 			if signalStr != "" {
 				signalStr += " | "
@@ -345,12 +347,12 @@ func displayFinalSignal(bars []datafeed.Bar, symbol string, analysis string, rsi
 		return
 	}
 
-	signal := strategy.CalculateSignal(rsi, atr, bars, symbol, analysis)
+	signal := signals.CalculateSignal(rsi, atr, bars, symbol, analysis)
 
 	fmt.Println()
 	fmt.Println("═══════════════════════════════════════════════════════════════════════════════════")
 
-	recommendationStr := strategy.FormatSignal(signal)
+	recommendationStr := signals.FormatSignal(signal)
 	fmt.Printf("🎯 FINAL RECOMMENDATION: %s\n", recommendationStr)
 
 	fmt.Printf("Reason: %s\n", signal.Reasoning)
@@ -428,18 +430,18 @@ func displaySupportResistance(bars []datafeed.Bar) {
 		return
 	}
 
-	support := strategy.FindSupport(bars)
-	resistance := strategy.FindResistance(bars)
-	pivot := strategy.FindPivotPoint(bars)
+	support := indicators.FindSupport(bars)
+	resistance := indicators.FindResistance(bars)
+	pivot := indicators.FindPivotPoint(bars)
 	currentPrice := bars[0].Close
 
-	distanceToSupport := strategy.DistanceToSupport(currentPrice, support)
-	distanceToResistance := strategy.DistanceToResistance(currentPrice, resistance)
+	distanceToSupport := indicators.DistanceToSupport(currentPrice, support)
+	distanceToResistance := indicators.DistanceToResistance(currentPrice, resistance)
 
-	isAtSupportLevel := strategy.IsAtSupport(currentPrice, support)
-	isAtResistanceLevel := strategy.IsAtResistance(currentPrice, resistance)
-	isBreakoutUp := strategy.IsBreakoutAboveResistance(currentPrice, resistance)
-	isBreakoutDown := strategy.IsBreakoutBelowSupport(currentPrice, support)
+	isAtSupportLevel := indicators.IsAtSupport(currentPrice, support)
+	isAtResistanceLevel := indicators.IsAtResistance(currentPrice, resistance)
+	isBreakoutUp := indicators.IsBreakoutAboveResistance(currentPrice, resistance)
+	isBreakoutDown := indicators.IsBreakoutBelowSupport(currentPrice, support)
 
 	fmt.Println()
 	fmt.Println("📊 SUPPORT & RESISTANCE LEVELS:")
@@ -664,7 +666,7 @@ func PrepareExportData(bars []datafeed.Bar, symbol string, timezone *time.Locati
 
 		var signals []string
 		if hasRSI {
-			rsiSignal := strategy.DetermineRSISignal(rsiVal)
+			rsiSignal := indicators.DetermineRSISignal(rsiVal)
 			switch rsiSignal {
 			case "overbought":
 				signals = append(signals, "Overbought")
@@ -676,7 +678,7 @@ func PrepareExportData(bars []datafeed.Bar, symbol string, timezone *time.Locati
 		}
 		if hasATR {
 			atrThreshold := bar.Close * 0.01
-			atrSignal := strategy.DetermineATRSignal(atrVal, atrThreshold)
+			atrSignal := indicators.DetermineATRSignal(atrVal, atrThreshold)
 			switch atrSignal {
 			case "high volatility":
 				signals = append(signals, "High Vol")
@@ -730,7 +732,7 @@ func DisplayVWAPAnalysis(bars []datafeed.Bar, symbol string, timeframe string) {
 		typesBars[i] = types.Bar(bars[i])
 	}
 
-	vwapCalc := strategy.NewVWAPCalculator(typesBars)
+	vwapCalc := indicators.NewVWAPCalculator(typesBars)
 	analysis := vwapCalc.AnalyzeVWAP(1.0)
 
 	fmt.Printf("\n💰 vWAP (Volume Weighted Average Price) Analysis for %s (%s)\n", symbol, timeframe)

@@ -43,3 +43,10 @@ type ScoringInput struct {
 	NewsSentimentScore float64 // 0-10 sentiment score
 	ShortSignalActive  bool    // Whether short signals are enabled
 }
+
+// TradeSignal represents a trading signal with direction and confidence
+type TradeSignal struct {
+	Direction  string
+	Confidence float64
+	Reasoning  string
+}
