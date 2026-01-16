@@ -281,7 +281,7 @@ func (m *MultiTimeframeSignal) IsMultiTimeframeConfirmed(requireStrongAlignment 
 	}
 
 	// Loose: Any 2 timeframes aligned
-	return m.AlignmentPercent >= 66.0 // 2 out of 3 aligned
+	return m.AlignmentPercent >= 66.0
 }
 
 func FormatSignal(signal CombinedSignal) string {

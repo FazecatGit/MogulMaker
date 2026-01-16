@@ -69,7 +69,7 @@ type Alert struct {
 	Data      map[string]interface{}
 }
 
-// creates a new risk manager with default limits
+// uses default limits for trades
 func NewManager(client *alpaca.Client, accountBalance float64) *Manager {
 	return &Manager{
 		MaxDailyLossPercent:     2.0,                   // -2% daily loss limit
@@ -90,18 +90,15 @@ func NewManager(client *alpaca.Client, accountBalance float64) *Manager {
 	}
 }
 
-// ============================================================================
 // ACCOUNT BALANCE MANAGEMENT
-// ============================================================================
 
-// updates the account balance and resets daily loss if new trading day
 func (rm *Manager) UpdateAccountBalance(newBalance float64) {
 	rm.accountBalanceMutex.Lock()
 	defer rm.accountBalanceMutex.Unlock()
 
 	rm.accountBalance = newBalance
 
-	// Reset daily loss if it's a new trading day (9:30 AM ET)
+	// Reset daily loss
 	now := time.Now()
 	if now.Sub(rm.lastAccountUpdateTime) > 24*time.Hour {
 		rm.CurrentDailyLossAmount = 0
@@ -119,11 +116,9 @@ func (rm *Manager) GetAccountBalance() float64 {
 	return rm.accountBalance
 }
 
-// ============================================================================
 // POSITION SIZING & VALIDATION
-// ============================================================================
 
-// validates if a position size is within risk limits
+// checks if proposed position size is within limits
 func (rm *Manager) ValidatePositionSize(symbol string, quantity int64, entryPrice float64) ValidationResult {
 	result := ValidationResult{
 		Valid:    true,
@@ -140,7 +135,7 @@ func (rm *Manager) ValidatePositionSize(symbol string, quantity int64, entryPric
 	result.Details["accountBalance"] = accountBalance
 	result.Details["positionSizePercent"] = positionSizePercent
 
-	// Check 1: Max position size (20% of account)
+	// Check 1: max position size (20% of account)
 	if positionSizePercent > rm.MaxPositionSizePercent {
 		result.Valid = false
 		result.Errors = append(result.Errors, fmt.Sprintf(
@@ -148,7 +143,7 @@ func (rm *Manager) ValidatePositionSize(symbol string, quantity int64, entryPric
 			positionSizePercent, rm.MaxPositionSizePercent))
 	}
 
-	// Check 2: Warning if >15%
+	// Check 2: warning if >15%
 	if positionSizePercent > 15 {
 		result.Warnings = append(result.Warnings, fmt.Sprintf(
 			"Position size %.1f%% is approaching max limit (20%%)",
@@ -158,7 +153,7 @@ func (rm *Manager) ValidatePositionSize(symbol string, quantity int64, entryPric
 	return result
 }
 
-// calculates safe position size based on account and risk parameters
+// checks safe position size based on risk parameters
 func (rm *Manager) CalculateSafePositionSize(
 	symbol string,
 	entryPrice float64,
@@ -170,13 +165,13 @@ func (rm *Manager) CalculateSafePositionSize(
 	priceRisk := entryPrice - stopLossPrice
 
 	if priceRisk <= 0 {
-		log.Printf("⚠️  Invalid stop loss: %.2f >= entry: %.2f", stopLossPrice, entryPrice)
+		log.Printf("Invalid stop loss: %.2f >= entry: %.2f", stopLossPrice, entryPrice)
 		return 0
 	}
 
 	quantity := int64(riskAmount / priceRisk)
 
-	// Cap at max position size (20% of account)
+	// Cap at max position size
 	maxPositionValue := accountBalance * (rm.MaxPositionSizePercent / 100.0)
 	maxQuantity := int64(maxPositionValue / entryPrice)
 
@@ -188,9 +183,7 @@ func (rm *Manager) CalculateSafePositionSize(
 	return quantity
 }
 
-// ============================================================================
 // DAILY LOSS TRACKING
-// ============================================================================
 
 // updates daily loss with a realized loss
 func (rm *Manager) LogTradeLoss(symbol string, loss float64) {
@@ -204,7 +197,7 @@ func (rm *Manager) LogTradeLoss(symbol string, loss float64) {
 		log.Printf("📉 Trade loss logged: $%.2f. Daily loss: $%.2f (%.2f%%)\n",
 			loss, rm.CurrentDailyLossAmount, lossPercent)
 
-		// Check if daily loss limit hit
+		// check if daily loss limit hit
 		if lossPercent >= rm.MaxDailyLossPercent {
 			rm.recordRiskEvent(&Event{
 				Timestamp:           time.Now(),
@@ -218,26 +211,27 @@ func (rm *Manager) LogTradeLoss(symbol string, loss float64) {
 
 			rm.SendAlert(&Alert{
 				Level:   "CRITICAL",
-				Title:   "⛔ DAILY LOSS LIMIT HIT",
-				Message: fmt.Sprintf("Daily loss has reached %.2f%% (%.2f%% limit). Trading halted.", lossPercent, rm.MaxDailyLossPercent),
+				Title:   "DAILY LOSS LIMIT HIT",
+				Message: fmt.Sprintf("Daily loss has reached %.2f%% (%.2f%% limit). Auto-closing %s to prevent further losses.", lossPercent, rm.MaxDailyLossPercent, symbol),
 				Symbol:  symbol,
 				Data: map[string]interface{}{
 					"dailyLoss": rm.CurrentDailyLossAmount,
 					"limit":     rm.accountBalance * (rm.MaxDailyLossPercent / 100.0),
 				},
 			})
+
+			// Auto-close the losing position
+			go rm.ClosePositionBySymbol(symbol)
 		}
 	}
 }
 
-// returns current daily loss
 func (rm *Manager) GetDailyLoss() float64 {
 	rm.accountBalanceMutex.RLock()
 	defer rm.accountBalanceMutex.RUnlock()
 	return rm.CurrentDailyLossAmount
 }
 
-// returns daily loss as percentage
 func (rm *Manager) GetDailyLossPercent() float64 {
 	rm.accountBalanceMutex.RLock()
 	defer rm.accountBalanceMutex.RUnlock()
@@ -248,14 +242,38 @@ func (rm *Manager) GetDailyLossPercent() float64 {
 	return (rm.CurrentDailyLossAmount / rm.accountBalance) * 100
 }
 
-// checks if daily loss limit has been hit
 func (rm *Manager) IsDailyLossLimitHit() bool {
 	return rm.GetDailyLossPercent() >= rm.MaxDailyLossPercent
 }
 
-// ============================================================================
+// closes stock or crypto position when loss limit is hit
+func (rm *Manager) ClosePositionBySymbol(symbol string) error {
+	if rm.client == nil {
+		return fmt.Errorf("alpaca client not initialized")
+	}
+
+	log.Printf("🔴 AUTO-CLOSING %s - Daily loss limit hit\n", symbol)
+
+	_, err := rm.client.ClosePosition(symbol, alpaca.ClosePositionRequest{})
+	if err != nil {
+		log.Printf("❌ Failed to auto-close %s: %v\n", symbol, err)
+		return err
+	}
+
+	log.Printf("✅ Position %s closed automatically\n", symbol)
+	rm.SendAlert(&Alert{
+		Level:   "CRITICAL",
+		Title:   "AUTO-CLOSED POSITION",
+		Message: fmt.Sprintf("%s was automatically closed to prevent further losses", symbol),
+		Symbol:  symbol,
+		Data: map[string]interface{}{
+			"reason": "Daily loss limit exceeded",
+		},
+	})
+	return nil
+}
+
 // OPEN POSITIONS TRACKING
-// ============================================================================
 
 // records a new position entry
 func (rm *Manager) AddPosition(symbol string, sector string) {
@@ -381,11 +399,8 @@ func (rm *Manager) CalculatePortfolioRisk(positions []*position.OpenPosition) Po
 	return risk
 }
 
-// ============================================================================
 // RISK EVENTS & ALERTS
-// ============================================================================
 
-// records a risk event
 func (rm *Manager) recordRiskEvent(event *Event) {
 	rm.riskEventsMutex.Lock()
 	defer rm.riskEventsMutex.Unlock()
@@ -393,7 +408,6 @@ func (rm *Manager) recordRiskEvent(event *Event) {
 	log.Printf("🚨 Risk Event: [%s] %s - %s\n", event.Severity, event.EventType, event.Details)
 }
 
-// returns recent risk events
 func (rm *Manager) GetRiskEvents(limit int) []*Event {
 	rm.riskEventsMutex.RLock()
 	defer rm.riskEventsMutex.RUnlock()
@@ -405,14 +419,12 @@ func (rm *Manager) GetRiskEvents(limit int) []*Event {
 	return events
 }
 
-// registers a callback for alerts
 func (rm *Manager) RegisterAlertCallback(callback AlertCallback) {
 	rm.alertCallbacksMutex.Lock()
 	defer rm.alertCallbacksMutex.Unlock()
 	rm.alertCallbacks = append(rm.alertCallbacks, callback)
 }
 
-// SendAlert sends an alert to all registered callbacks
 func (rm *Manager) SendAlert(alert *Alert) {
 	alert.Timestamp = time.Now()
 
@@ -421,13 +433,11 @@ func (rm *Manager) SendAlert(alert *Alert) {
 	rm.alertCallbacksMutex.RUnlock()
 
 	for _, callback := range callbacks {
-		go callback(alert) // Non-blocking
+		go callback(alert)
 	}
 }
 
-// ============================================================================
 // RISK REPORT & MONITORING
-// ============================================================================
 
 // generates a comprehensive risk report
 func (rm *Manager) GenerateRiskReport(positions []*position.OpenPosition) Report {
@@ -469,9 +479,7 @@ func (rm *Manager) GenerateRiskReport(positions []*position.OpenPosition) Report
 	return report
 }
 
-// ============================================================================
 // TYPES & STRUCTS
-// ============================================================================
 
 // validation result for position/order checks
 type ValidationResult struct {

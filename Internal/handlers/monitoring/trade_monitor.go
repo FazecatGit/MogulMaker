@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"math"
+	"strings"
 	"sync"
 	"time"
 
@@ -558,6 +559,8 @@ func (tm *Monitor) PrintOpenPositions() {
 	fmt.Printf("%-8s %-6s %-8s %-8s %-10s %-8s %-8s %-12s %-12s %-10s\n",
 		"Symbol", "Dir", "Entry", "Current", "Qty", "U/R P&L", "U/R %", "Time", "R/R Ratio", "Alert")
 
+	criticalPositions := []string{}
+
 	for _, m := range monitors {
 		emoji := "🟢"
 		if m.UnrealizedPnLPercent < 0 {
@@ -568,8 +571,49 @@ func (tm *Monitor) PrintOpenPositions() {
 			m.Symbol, m.Direction, m.EntryPrice, m.CurrentPrice, m.Quantity,
 			m.UnrealizedPnL, m.UnrealizedPnLPercent, m.TimeInTrade, m.RiskRewardRatio,
 			emoji+" "+m.AlertLevel)
+
+		// Track critical positions
+		if m.AlertLevel == "CRITICAL" {
+			criticalPositions = append(criticalPositions, m.Symbol)
+		}
 	}
 	fmt.Println(formatting.Separator(width) + "\n")
+
+	// Prompt for critical positions
+	if len(criticalPositions) > 0 {
+		fmt.Printf("\n Found %d position(s) in CRITICAL status: %v\n", len(criticalPositions), criticalPositions)
+		fmt.Print("Do you want to close any of these positions? (y/n): ")
+		var response string
+		fmt.Scanln(&response)
+
+		if response == "y" || response == "Y" || response == "yes" {
+			for _, symbol := range criticalPositions {
+				fmt.Printf("\nClose %s? (y/n): ", symbol)
+				var confirmClose string
+				fmt.Scanln(&confirmClose)
+
+				if confirmClose == "y" || confirmClose == "Y" || confirmClose == "yes" {
+					if tm.riskManager != nil {
+						fmt.Printf("⏳ Closing %s...\n", symbol)
+						err := tm.riskManager.ClosePositionBySymbol(symbol)
+						if err != nil {
+							// Check if the position may already be closed
+							errMsg := err.Error()
+							if strings.Contains(errMsg, "404") || strings.Contains(errMsg, "not found") {
+								fmt.Printf("  %s appears to already be closed or doesn't exist\n", symbol)
+							} else {
+								fmt.Printf("  Failed to close %s: %v\n", symbol, err)
+							}
+						} else {
+							fmt.Printf("  %s closed successfully\n", symbol)
+						}
+					} else {
+						fmt.Println(" Risk Manager not available")
+					}
+				}
+			}
+		}
+	}
 }
 
 // determineAlertLevel evaluates position P&L and returns appropriate alert level and message
