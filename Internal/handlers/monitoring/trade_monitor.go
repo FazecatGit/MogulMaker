@@ -9,9 +9,11 @@ import (
 	"sync"
 	"time"
 
+	datafeed "github.com/fazecat/mongelmaker/Internal/database"
 	"github.com/fazecat/mongelmaker/Internal/handlers/risk"
 	"github.com/fazecat/mongelmaker/Internal/strategy/position"
 	"github.com/fazecat/mongelmaker/Internal/utils/formatting"
+	"github.com/shopspring/decimal"
 )
 
 // Real-time trade monitoring, P&L tracking, and analytics
@@ -33,7 +35,7 @@ type TradeRecord struct {
 	Symbol             string
 	EntryTime          time.Time
 	ExitTime           time.Time
-	Direction          string // "LONG" or "SHORT"
+	Direction          string
 	EntryPrice         float64
 	ExitPrice          float64
 	Quantity           int64
@@ -43,7 +45,7 @@ type TradeRecord struct {
 	RealizedPnLPercent float64
 	Commission         float64
 	Duration           time.Duration
-	Status             string // "COMPLETED", "CANCELLED", "PARTIAL_EXIT"
+	Status             string
 	Tags               []string
 }
 
@@ -53,7 +55,7 @@ type PortfolioStats struct {
 	WinningTrades         int
 	LosingTrades          int
 	BreakevenTrades       int
-	WinRate               float64 // 0-100%
+	WinRate               float64
 	TotalProfit           float64
 	TotalLoss             float64
 	NetProfit             float64
@@ -61,7 +63,7 @@ type PortfolioStats struct {
 	AverageLossPerTrade   float64
 	LargestWin            float64
 	LargestLoss           float64
-	ProfitFactor          float64 // Total profit / Total loss
+	ProfitFactor          float64
 	AvgTradeLength        time.Duration
 	MaxConsecutiveWins    int
 	MaxConsecutiveLosses  int
@@ -84,11 +86,10 @@ type PositionMonitor struct {
 	TimeInTrade          time.Duration
 	RiskRewardRatio      float64
 	Status               string
-	AlertLevel           string // "NONE", "INFO", "WARNING", "CRITICAL"
+	AlertLevel           string
 	AlertMessage         string
 }
 
-// creates a new trade monitor
 func NewMonitor(pm *position.PositionManager, rm *risk.Manager) *Monitor {
 	return &Monitor{
 		positionManager: pm,
@@ -105,6 +106,24 @@ func NewMonitor(pm *position.PositionManager, rm *risk.Manager) *Monitor {
 		stopChan:       make(chan bool),
 		updateInterval: 1 * time.Second,
 	}
+}
+
+// InitializeTradeHistory loads completed trades from database on startup
+func (tm *Monitor) InitializeTradeHistory() error {
+	ctx := context.Background()
+
+	// Load all completed trades from database
+	dbTrades, err := datafeed.GetOpenTrades(ctx)
+	if err != nil {
+		log.Printf("⚠️  Warning: Could not load trade history from database: %v\n", err)
+		return err
+	}
+
+	if len(dbTrades) > 0 {
+		log.Printf("📊 Found %d trades in database history\n", len(dbTrades))
+	}
+
+	return nil
 }
 
 // ============================================================================
@@ -157,6 +176,14 @@ func (tm *Monitor) RecordTrade(
 	tm.historyMutex.Lock()
 	tm.tradeHistory = append(tm.tradeHistory, trade)
 	tm.historyMutex.Unlock()
+
+	// Also save to database for persistent storage
+	ctx := context.Background()
+	err := datafeed.LogTradeExecution(ctx, symbol, direction, quantity,
+		decimal.NewFromFloat(exitPrice), trade.ID, "COMPLETED")
+	if err != nil {
+		log.Printf("⚠️  Failed to log trade to database: %v\n", err)
+	}
 
 	// Update stats
 	tm.updateStats()
@@ -617,6 +644,180 @@ func (tm *Monitor) PrintOpenPositions() {
 }
 
 // determineAlertLevel evaluates position P&L and returns appropriate alert level and message
+// CheckPortfolioRiskAndClose checks if portfolio risk is exceeded and offers to close high-risk positions
+func (tm *Monitor) CheckPortfolioRiskAndClose() {
+	if tm.positionManager == nil || tm.riskManager == nil {
+		fmt.Println("❌ Position or Risk Manager not available")
+		return
+	}
+
+	ctx := context.Background()
+	if err := tm.positionManager.SyncFromAlpaca(ctx); err != nil {
+		log.Printf("Warning: Could not sync positions: %v\n", err)
+	}
+
+	// Get all open positions
+	openPositions := tm.positionManager.GetOpenPositions()
+	if len(openPositions) == 0 {
+		fmt.Println("No open positions to analyze")
+		return
+	}
+
+	// Calculate portfolio risk
+	portfolioRisk := tm.riskManager.CalculatePortfolioRisk(openPositions)
+
+	if !portfolioRisk.IsOverRisk {
+		fmt.Printf("✅ Portfolio risk is within limits: %.2f%% (max %.2f%%)\n",
+			portfolioRisk.TotalRiskPercent, tm.riskManager.MaxPortfolioRiskPercent)
+		return
+	}
+
+	// Portfolio risk exceeded - show breakdown and allow closing high-risk positions
+	fmt.Printf("\n  PORTFOLIO RISK EXCEEDED: %.2f%% (max %.2f%%)\n",
+		portfolioRisk.TotalRiskPercent, tm.riskManager.MaxPortfolioRiskPercent)
+	fmt.Printf("Max allowed risk: $%.2f\n", portfolioRisk.MaxAllowedRisk)
+	fmt.Printf("Current total risk: $%.2f\n\n", portfolioRisk.TotalRiskAmount)
+
+	fmt.Println("Position Risk Breakdown:")
+	fmt.Println("────────────────────────────────────────────────────")
+	fmt.Printf("%-8s %-12s %-12s\n", "Symbol", "Risk $", "Risk %")
+	fmt.Println("────────────────────────────────────────────────────")
+
+	for _, pr := range portfolioRisk.PositionRisks {
+		fmt.Printf("%-8s $%-11.2f %-11.2f%%\n", pr.Symbol, pr.RiskAmount, pr.RiskPercent)
+	}
+
+	// Ask user which positions to close
+	fmt.Print("Close positions to reduce risk? (y/n): ")
+	var response string
+	fmt.Scanln(&response)
+
+	if response == "y" || response == "Y" || response == "yes" {
+		// Sort positions by risk (highest first)
+		riskMap := make(map[string]float64)
+		for _, pr := range portfolioRisk.PositionRisks {
+			riskMap[pr.Symbol] = pr.RiskAmount
+		}
+
+		for _, pr := range portfolioRisk.PositionRisks {
+			fmt.Printf("\nClose %s (Risk: $%.2f)? (y/n): ", pr.Symbol, pr.RiskAmount)
+			var closeConfirm string
+			fmt.Scanln(&closeConfirm)
+
+			if closeConfirm == "y" || closeConfirm == "Y" || closeConfirm == "yes" {
+				if tm.riskManager != nil {
+					fmt.Printf("⏳ Closing %s...\n", pr.Symbol)
+					err := tm.riskManager.ClosePositionBySymbol(pr.Symbol)
+					if err != nil {
+						errMsg := err.Error()
+						if strings.Contains(errMsg, "404") || strings.Contains(errMsg, "not found") {
+							fmt.Printf("⚠️  %s appears to already be closed or doesn't exist\n", pr.Symbol)
+						} else {
+							fmt.Printf("❌ Failed to close %s: %v\n", pr.Symbol, err)
+						}
+					} else {
+						fmt.Printf("✅ %s closed successfully\n", pr.Symbol)
+					}
+				}
+			}
+		}
+	}
+}
+
+// PrintRiskEvents displays recent risk events from the risk manager
+func (tm *Monitor) PrintRiskEvents() {
+	if tm.riskManager == nil {
+		fmt.Println("❌ Risk Manager not available")
+		return
+	}
+
+	events := tm.riskManager.GetRiskEvents(20)
+
+	if len(events) == 0 {
+		fmt.Println("✅ No risk events recorded")
+		return
+	}
+
+	width := 120
+	fmt.Println("\n" + formatting.Separator(width))
+	fmt.Println("🚨 RECENT RISK EVENTS")
+	fmt.Println(formatting.Separator(width))
+	fmt.Printf("%-10s %-25s %-10s %-40s %-20s\n",
+		"Severity", "Event Type", "Symbol", "Details", "Timestamp")
+	fmt.Println(formatting.Separator(width))
+
+	for _, event := range events {
+		// Truncate details if too long
+		details := event.Details
+		if len(details) > 40 {
+			details = details[:37] + "..."
+		}
+
+		fmt.Printf("%-10s %-25s %-10s %-40s %s\n",
+			event.Severity, event.EventType, event.Symbol, details,
+			event.Timestamp.Format("2006-01-02 15:04:05"))
+	}
+	fmt.Println(formatting.Separator(width) + "\n")
+}
+
+// PrintTradeHistory displays recent completed trades from memory/history with pagination
+func (tm *Monitor) PrintTradeHistory() {
+	displayCount := 10 // Start with 10 trades
+
+	for {
+		tm.historyMutex.RLock()
+		totalTrades := len(tm.tradeHistory)
+		tm.historyMutex.RUnlock()
+
+		if totalTrades == 0 {
+			fmt.Println("✅ No completed trades in history")
+			return
+		}
+
+		// Get trades to display (up to displayCount)
+		trades := tm.GetTradeHistory(displayCount)
+
+		width := 100
+		fmt.Println("\n" + formatting.Separator(width))
+		fmt.Printf("📜 TRADE HISTORY (Showing %d of %d total)\n", len(trades), totalTrades)
+		fmt.Println(formatting.Separator(width))
+		fmt.Printf("%-8s %-6s %-10s %-10s %-8s %-12s %-10s %-15s\n",
+			"Symbol", "Dir", "Entry", "Exit", "Qty", "P&L", "P&L %", "Duration")
+		fmt.Println(formatting.Separator(width))
+
+		for _, trade := range trades {
+			emoji := "🟢"
+			if trade.RealizedPnL < 0 {
+				emoji = "🔴"
+			}
+
+			fmt.Printf("%-8s %-6s $%-9.2f $%-9.2f %-8d $%-11.2f %-9.2f%% %v\n",
+				trade.Symbol, trade.Direction, trade.EntryPrice, trade.ExitPrice,
+				trade.Quantity, trade.RealizedPnL, trade.RealizedPnLPercent,
+				trade.Duration)
+			fmt.Printf("  %s %s\n", emoji, trade.ExitReason)
+		}
+		fmt.Println(formatting.Separator(width))
+
+		// Show pagination options
+		if len(trades) < totalTrades {
+			fmt.Printf("\n💡 Showing %d of %d trades\n", len(trades), totalTrades)
+			fmt.Println("Press Enter to load 10 more, or type 'q' to quit: ")
+			var input string
+			fmt.Scanln(&input)
+
+			if input == "q" || input == "Q" {
+				break
+			}
+
+			displayCount += 10
+		} else {
+			fmt.Printf("\n✅ All %d trades displayed\n", totalTrades)
+			break
+		}
+	}
+}
+
 func (tm *Monitor) determineAlertLevel(unrealizedPnLPercent float64) (string, string) {
 	switch {
 	case unrealizedPnLPercent <= -2:

@@ -288,7 +288,6 @@ func (q *Queries) GetATRPrices(ctx context.Context, arg GetATRPricesParams) ([]G
 const getAllOpenTrades = `-- name: GetAllOpenTrades :many
 SELECT id, symbol, side, quantity, price, total_value, alpaca_order_id, status, created_at
 FROM trades
-WHERE status = 'PENDING' OR status = 'FILLED'
 ORDER BY created_at DESC
 `
 
@@ -367,6 +366,57 @@ func (q *Queries) GetAllScanLogs(ctx context.Context) ([]GetAllScanLogsRow, erro
 			&i.LastScanTimestamp,
 			&i.NextScanDue,
 			&i.SymbolsScanned,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getAllTrades = `-- name: GetAllTrades :many
+SELECT id, symbol, side, quantity, price, total_value, alpaca_order_id, status, created_at
+FROM trades
+ORDER BY created_at DESC
+`
+
+type GetAllTradesRow struct {
+	ID            int32          `json:"id"`
+	Symbol        string         `json:"symbol"`
+	Side          string         `json:"side"`
+	Quantity      string         `json:"quantity"`
+	Price         string         `json:"price"`
+	TotalValue    string         `json:"total_value"`
+	AlpacaOrderID sql.NullString `json:"alpaca_order_id"`
+	Status        sql.NullString `json:"status"`
+	CreatedAt     sql.NullTime   `json:"created_at"`
+}
+
+func (q *Queries) GetAllTrades(ctx context.Context) ([]GetAllTradesRow, error) {
+	rows, err := q.db.QueryContext(ctx, getAllTrades)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetAllTradesRow
+	for rows.Next() {
+		var i GetAllTradesRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Symbol,
+			&i.Side,
+			&i.Quantity,
+			&i.Price,
+			&i.TotalValue,
+			&i.AlpacaOrderID,
+			&i.Status,
+			&i.CreatedAt,
 		); err != nil {
 			return nil, err
 		}

@@ -5,6 +5,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"log"
 	"os"
 	"strings"
 	"sync"
@@ -23,6 +24,7 @@ import (
 	"github.com/fazecat/mongelmaker/Internal/utils/scanner"
 	"github.com/fazecat/mongelmaker/Internal/utils/scoring"
 	"github.com/fazecat/mongelmaker/interactive"
+	"github.com/shopspring/decimal"
 )
 
 // Global position manager for tracking open trades
@@ -190,8 +192,6 @@ func HandleScreener(ctx context.Context, cfg *config.Config, q *database.Queries
 		for _, sym := range strings.Split(input, ",") {
 			symbols = append(symbols, strings.TrimSpace(sym))
 		}
-	} else {
-		symbols = strategy.GetPopularStocks()
 	}
 
 	if len(symbols) == 0 {
@@ -734,18 +734,20 @@ func HandleExecuteTrades(ctx context.Context, cfg *config.Config, q *database.Qu
 	// Log execution
 	strategy.LogOrderExecution(orderReq, validation, order.ID)
 
+	// Log trade to database for persistent storage
+	err = datafeed.LogTradeExecution(ctx, order.Symbol, direction, orderReq.Quantity,
+		decimal.NewFromFloat(entryPrice), order.ID, order.Status)
+	if err != nil {
+		log.Printf("⚠️  Warning: Could not log trade to database: %v\n", err)
+	}
+
 	fmt.Println("\n✅ TRADE EXECUTED SUCCESSFULLY!")
 	fmt.Printf("Order ID: %s | Status: %s\n", order.ID, order.Status)
+	fmt.Println("\n📡 Position monitoring enabled in background")
+	fmt.Println("   View it anytime via: Trade Monitor (Option 9)")
 
-	// Start monitoring position
-	fmt.Println("\n📡 Position monitoring enabled. Press Ctrl+C to stop.")
+	// Start monitoring position in background
 	go posManager.MonitorPositions(ctx, 5*time.Second)
-
-	// Keep monitoring until user interrupts
-	select {
-	case <-ctx.Done():
-		fmt.Println("Position monitoring stopped")
-	}
 }
 
 // HandleClosePosition closes/sells an open position
@@ -754,7 +756,7 @@ func HandleClosePosition(ctx context.Context, client *alpaca.Client, cfg *config
 
 	separator := "============================================================"
 	fmt.Println("\n" + separator)
-	fmt.Println("🔴 CLOSE/SELL POSITION")
+	fmt.Println(" CLOSE/SELL POSITION")
 	fmt.Println(separator)
 
 	// Simple approach - ask user for symbol to close
@@ -762,20 +764,18 @@ func HandleClosePosition(ctx context.Context, client *alpaca.Client, cfg *config
 	var symbol string
 	_, err := fmt.Scanln(&symbol)
 	if err != nil || symbol == "" {
-		fmt.Println("❌ Invalid symbol")
+		fmt.Println(" Invalid symbol")
 		return
 	}
 
-	// Confirm close
-	fmt.Printf("\n⚠️  Close all positions for %s? (yes/no): ", symbol)
+	fmt.Printf("\n  Close all positions for %s? (yes/no): ", symbol)
 	var confirm string
 	_, err = fmt.Scanln(&confirm)
 	if err != nil || (confirm != "yes" && confirm != "y") {
-		fmt.Println("❌ Close cancelled")
+		fmt.Println(" Close cancelled")
 		return
 	}
 
-	// Close the position
 	fmt.Println("\n⏳ Closing position...")
 	order, err := client.ClosePosition(symbol, alpaca.ClosePositionRequest{})
 	if err != nil {
@@ -783,7 +783,7 @@ func HandleClosePosition(ctx context.Context, client *alpaca.Client, cfg *config
 		return
 	}
 
-	fmt.Println("\n✅ POSITION CLOSED SUCCESSFULLY!")
+	fmt.Println("\n POSITION CLOSED SUCCESSFULLY!")
 	fmt.Printf("Symbol: %s\n", order.Symbol)
 	fmt.Printf("Order ID: %s | Status: %s\n", order.ID, order.Status)
 	if order.FilledAvgPrice != nil {
@@ -809,18 +809,58 @@ func HandleTradeHistory(ctx context.Context, cfg *config.Config, q *database.Que
 		}
 
 		if len(trades) > 0 {
-			fmt.Println("\n📊 Open Trades:")
-			for _, trade := range trades {
-				fmt.Printf("  %s | %s x %s @ %s | Status: %s\n",
-					trade.Symbol, trade.Side, trade.Quantity, trade.Price, trade.Status)
+			displayCount := 10 // Start with 10 trades
+			totalTrades := len(trades)
+
+			for {
+				// Get trades to display (up to displayCount)
+				endIndex := displayCount
+				if endIndex > totalTrades {
+					endIndex = totalTrades
+				}
+
+				fmt.Printf("\n📊 Open Trades (Showing %d of %d):\n", endIndex, totalTrades)
+				for i := 0; i < endIndex; i++ {
+					trade := trades[i]
+					fmt.Printf("  %s | %s x %s @ %s | Status: %s\n",
+						trade.Symbol, trade.Side, trade.Quantity, trade.Price, trade.Status)
+				}
+
+				// Show pagination options
+				if endIndex < totalTrades {
+					fmt.Printf("\n💡 Showing %d of %d trades\n", endIndex, totalTrades)
+					fmt.Print("Press Enter to load 10 more, or type 'q' to quit: ")
+					var input string
+					fmt.Scanln(&input)
+
+					if input == "q" || input == "Q" {
+						break
+					}
+
+					displayCount += 10
+				} else {
+					fmt.Printf("\n✅ All %d trades displayed\n", totalTrades)
+					break
+				}
 			}
 		} else {
 			fmt.Println("\n📝 No trades found in database")
-			fmt.Println("💡 Tip: Trades are logged to the database when executed through MongelMaker")
+
+			// Debug: Check ALL trades regardless of status
+			allTrades, debugErr := datafeed.GetAllTradesDebug(ctx)
+			if debugErr == nil && len(allTrades) > 0 {
+				fmt.Println("\n🔍 DEBUG: Trades exist but with different statuses:")
+				for _, trade := range allTrades {
+					fmt.Printf("  %s | %s x %s | Status: %s\n",
+						trade.Symbol, trade.Side, trade.Quantity, trade.Status.String)
+				}
+			}
+
+			fmt.Println("\n💡 Tip: Trades are logged to the database when executed through MongelMaker")
 			fmt.Println("   Your open positions in Alpaca can be viewed in the Trade Monitor (Option 9)")
 		}
 	} else {
-		trades, err := datafeed.GetTradeHistory(ctx, symbol, 50)
+		trades, err := datafeed.GetTradeHistory(ctx, symbol, 100) // Increased from 50 to 100
 		if err != nil {
 			fmt.Printf("❌ Error retrieving trades: %v\n", err)
 			return
@@ -833,10 +873,39 @@ func HandleTradeHistory(ctx context.Context, cfg *config.Config, q *database.Que
 			return
 		}
 
-		fmt.Println("\n📋 Trade History for " + symbol + ":")
-		for _, trade := range trades {
-			fmt.Printf("  %s x %s @ %s | Total: %s | Status: %s\n",
-				trade.Side, trade.Quantity, trade.Price, trade.TotalValue, trade.Status)
+		totalTrades := len(trades)
+		displayCount := 10
+
+		for {
+			// Get trades to display (up to displayCount)
+			endIndex := displayCount
+			if endIndex > totalTrades {
+				endIndex = totalTrades
+			}
+
+			fmt.Printf("\n📋 Trade History for %s (Showing %d of %d):\n", symbol, endIndex, totalTrades)
+			for i := 0; i < endIndex; i++ {
+				trade := trades[i]
+				fmt.Printf("  %s x %s @ %s | Total: %s | Status: %s\n",
+					trade.Side, trade.Quantity, trade.Price, trade.TotalValue, trade.Status)
+			}
+
+			// Show pagination options
+			if endIndex < totalTrades {
+				fmt.Printf("\n💡 Showing %d of %d trades\n", endIndex, totalTrades)
+				fmt.Print("Press Enter to load 10 more, or type 'q' to quit: ")
+				var input string
+				fmt.Scanln(&input)
+
+				if input == "q" || input == "Q" {
+					break
+				}
+
+				displayCount += 10
+			} else {
+				fmt.Printf("\n✅ All %d trades displayed\n", totalTrades)
+				break
+			}
 		}
 	}
 }
@@ -932,6 +1001,8 @@ func HandleDisplayTradeMonitor(tradeMonitor interface{}) {
 	type Monitor interface {
 		PrintStatsReport()
 		PrintOpenPositions()
+		PrintRiskEvents()
+		PrintTradeHistory()
 	}
 
 	if tm, ok := tradeMonitor.(Monitor); ok {
@@ -939,13 +1010,15 @@ func HandleDisplayTradeMonitor(tradeMonitor interface{}) {
 		fmt.Println("\n📊 Trade Monitor Menu:")
 		fmt.Println("1. Open Positions")
 		fmt.Println("2. Trade Statistics")
-		fmt.Println("3. Both")
-		fmt.Println("4. Back")
-		fmt.Print("Enter choice (1-4): ")
+		fmt.Println("3. Trade History")
+		fmt.Println("4. Risk Events")
+		fmt.Println("5. All")
+		fmt.Println("6. Back")
+		fmt.Print("Enter choice (1-6): ")
 
 		var choice int
 		_, err := fmt.Scanln(&choice)
-		if err != nil || choice < 1 || choice > 4 {
+		if err != nil || choice < 1 || choice > 6 {
 			fmt.Println("❌ Invalid choice")
 			return
 		}
@@ -956,9 +1029,15 @@ func HandleDisplayTradeMonitor(tradeMonitor interface{}) {
 		case 2:
 			tm.PrintStatsReport()
 		case 3:
+			tm.PrintTradeHistory()
+		case 4:
+			tm.PrintRiskEvents()
+		case 5:
 			tm.PrintOpenPositions()
 			tm.PrintStatsReport()
-		case 4:
+			tm.PrintTradeHistory()
+			tm.PrintRiskEvents()
+		case 6:
 			return
 		}
 	} else {

@@ -49,7 +49,7 @@ type Manager struct {
 type Event struct {
 	Timestamp           time.Time
 	EventType           string // "MAX_DAILY_LOSS_HIT", "MAX_POSITIONS_HIT", "POSITION_SIZE_EXCEEDED", etc.
-	Severity            string // "CRITICAL", "WARNING", "INFO"
+	Severity            string
 	Symbol              string
 	Details             string
 	CurrentAccountValue float64
@@ -59,7 +59,6 @@ type Event struct {
 // callback function for risk alerts
 type AlertCallback func(*Alert)
 
-// alert that can be sent to users/handlers
 type Alert struct {
 	Level     string // "INFO", "WARNING", "CRITICAL"
 	Title     string
@@ -69,16 +68,16 @@ type Alert struct {
 	Data      map[string]interface{}
 }
 
-// uses default limits for trades
+// default limits for trades
 func NewManager(client *alpaca.Client, accountBalance float64) *Manager {
 	return &Manager{
-		MaxDailyLossPercent:     2.0,                   // -2% daily loss limit
+		MaxDailyLossPercent:     2.0,
 		MaxDailyLossAmount:      accountBalance * 0.02, // Calculate dollar amount
 		CurrentDailyLossAmount:  0,
 		DailyLossResetTime:      time.Now(),
-		MaxOpenPositions:        5,
-		MaxPositionSizePercent:  20.0, // 20% per trade
-		MaxPortfolioRiskPercent: 10.0, // 10% total risk
+		MaxOpenPositions:        150,
+		MaxPositionSizePercent:  20.0,
+		MaxPortfolioRiskPercent: 10.0,
 		MaxSameSectorPositions:  3,
 		PositionsBySymbol:       make(map[string]int),
 		PositionsBySector:       make(map[string]int),
@@ -114,73 +113,6 @@ func (rm *Manager) GetAccountBalance() float64 {
 	rm.accountBalanceMutex.RLock()
 	defer rm.accountBalanceMutex.RUnlock()
 	return rm.accountBalance
-}
-
-// POSITION SIZING & VALIDATION
-
-// checks if proposed position size is within limits
-func (rm *Manager) ValidatePositionSize(symbol string, quantity int64, entryPrice float64) ValidationResult {
-	result := ValidationResult{
-		Valid:    true,
-		Warnings: []string{},
-		Errors:   []string{},
-		Details:  map[string]interface{}{},
-	}
-
-	positionValue := float64(quantity) * entryPrice
-	accountBalance := rm.GetAccountBalance()
-	positionSizePercent := (positionValue / accountBalance) * 100
-
-	result.Details["positionValue"] = positionValue
-	result.Details["accountBalance"] = accountBalance
-	result.Details["positionSizePercent"] = positionSizePercent
-
-	// Check 1: max position size (20% of account)
-	if positionSizePercent > rm.MaxPositionSizePercent {
-		result.Valid = false
-		result.Errors = append(result.Errors, fmt.Sprintf(
-			"Position size %.1f%% exceeds maximum %.1f%% of account",
-			positionSizePercent, rm.MaxPositionSizePercent))
-	}
-
-	// Check 2: warning if >15%
-	if positionSizePercent > 15 {
-		result.Warnings = append(result.Warnings, fmt.Sprintf(
-			"Position size %.1f%% is approaching max limit (20%%)",
-			positionSizePercent))
-	}
-
-	return result
-}
-
-// checks safe position size based on risk parameters
-func (rm *Manager) CalculateSafePositionSize(
-	symbol string,
-	entryPrice float64,
-	stopLossPrice float64,
-	maxRiskPercent float64) int64 {
-
-	accountBalance := rm.GetAccountBalance()
-	riskAmount := accountBalance * (maxRiskPercent / 100.0)
-	priceRisk := entryPrice - stopLossPrice
-
-	if priceRisk <= 0 {
-		log.Printf("Invalid stop loss: %.2f >= entry: %.2f", stopLossPrice, entryPrice)
-		return 0
-	}
-
-	quantity := int64(riskAmount / priceRisk)
-
-	// Cap at max position size
-	maxPositionValue := accountBalance * (rm.MaxPositionSizePercent / 100.0)
-	maxQuantity := int64(maxPositionValue / entryPrice)
-
-	if quantity > maxQuantity {
-		quantity = maxQuantity
-		log.Printf("⚠️  Position size capped at max portfolio allocation")
-	}
-
-	return quantity
 }
 
 // DAILY LOSS TRACKING
@@ -226,12 +158,6 @@ func (rm *Manager) LogTradeLoss(symbol string, loss float64) {
 	}
 }
 
-func (rm *Manager) GetDailyLoss() float64 {
-	rm.accountBalanceMutex.RLock()
-	defer rm.accountBalanceMutex.RUnlock()
-	return rm.CurrentDailyLossAmount
-}
-
 func (rm *Manager) GetDailyLossPercent() float64 {
 	rm.accountBalanceMutex.RLock()
 	defer rm.accountBalanceMutex.RUnlock()
@@ -246,118 +172,25 @@ func (rm *Manager) IsDailyLossLimitHit() bool {
 	return rm.GetDailyLossPercent() >= rm.MaxDailyLossPercent
 }
 
-// closes stock or crypto position when loss limit is hit
+// closes position if risk is hit
 func (rm *Manager) ClosePositionBySymbol(symbol string) error {
 	if rm.client == nil {
 		return fmt.Errorf("alpaca client not initialized")
 	}
 
-	log.Printf("🔴 AUTO-CLOSING %s - Daily loss limit hit\n", symbol)
+	log.Printf("AUTO-CLOSING %s - Daily loss limit hit\n", symbol)
 
 	_, err := rm.client.ClosePosition(symbol, alpaca.ClosePositionRequest{})
 	if err != nil {
-		log.Printf("❌ Failed to auto-close %s: %v\n", symbol, err)
+		log.Printf("Failed to auto-close %s: %v\n", symbol, err)
 		return err
 	}
 
-	log.Printf("✅ Position %s closed automatically\n", symbol)
-	rm.SendAlert(&Alert{
-		Level:   "CRITICAL",
-		Title:   "AUTO-CLOSED POSITION",
-		Message: fmt.Sprintf("%s was automatically closed to prevent further losses", symbol),
-		Symbol:  symbol,
-		Data: map[string]interface{}{
-			"reason": "Daily loss limit exceeded",
-		},
-	})
+	log.Printf("Position %s closed automatically\n", symbol)
 	return nil
 }
 
-// OPEN POSITIONS TRACKING
-
-// records a new position entry
-func (rm *Manager) AddPosition(symbol string, sector string) {
-	rm.positionsMutex.Lock()
-	defer rm.positionsMutex.Unlock()
-
-	rm.PositionsBySymbol[symbol]++
-	rm.PositionsBySector[sector]++
-}
-
-// records a position closure
-func (rm *Manager) RemovePosition(symbol string, sector string) {
-	rm.positionsMutex.Lock()
-	defer rm.positionsMutex.Unlock()
-
-	if count, exists := rm.PositionsBySymbol[symbol]; exists && count > 0 {
-		rm.PositionsBySymbol[symbol]--
-	}
-	if count, exists := rm.PositionsBySector[sector]; exists && count > 0 {
-		rm.PositionsBySector[sector]--
-	}
-}
-
-// returns count of open positions
-func (rm *Manager) CountOpenPositions() int {
-	rm.positionsMutex.RLock()
-	defer rm.positionsMutex.RUnlock()
-
-	count := 0
-	for _, c := range rm.PositionsBySymbol {
-		count += c
-	}
-	return count
-}
-
-// validates if a new position can be opened
-func (rm *Manager) CanOpenPosition(symbol string, sector string) ValidationResult {
-	result := ValidationResult{
-		Valid:    true,
-		Warnings: []string{},
-		Errors:   []string{},
-		Details:  map[string]interface{}{},
-	}
-
-	rm.positionsMutex.RLock()
-	openPositions := len(rm.PositionsBySymbol)
-	sectorCount := rm.PositionsBySector[sector]
-	rm.positionsMutex.RUnlock()
-
-	result.Details["openPositions"] = openPositions
-	result.Details["sectorCount"] = sectorCount
-	result.Details["maxOpenPositions"] = rm.MaxOpenPositions
-
-	// Check 1: Max open positions
-	if openPositions >= rm.MaxOpenPositions {
-		result.Valid = false
-		result.Errors = append(result.Errors, fmt.Sprintf(
-			"Cannot open new position: %d/%d max open positions reached",
-			openPositions, rm.MaxOpenPositions))
-		return result
-	}
-
-	// Check 2: Sector diversification
-	if sectorCount >= rm.MaxSameSectorPositions {
-		result.Valid = false
-		result.Errors = append(result.Errors, fmt.Sprintf(
-			"Cannot open new position: %d/%d positions in %s sector",
-			sectorCount, rm.MaxSameSectorPositions, sector))
-	}
-
-	// Check 3: Daily loss limit
-	if rm.IsDailyLossLimitHit() {
-		result.Valid = false
-		result.Errors = append(result.Errors, fmt.Sprintf(
-			"Cannot open new position: Daily loss limit (%.2f%%) hit",
-			rm.MaxDailyLossPercent))
-	}
-
-	return result
-}
-
-// ============================================================================
 // PORTFOLIO RISK ASSESSMENT
-// ============================================================================
 
 // calculates total portfolio risk across all open positions
 func (rm *Manager) CalculatePortfolioRisk(positions []*position.OpenPosition) PortfolioRisk {
@@ -370,7 +203,6 @@ func (rm *Manager) CalculatePortfolioRisk(positions []*position.OpenPosition) Po
 	}
 
 	for _, pos := range positions {
-		// Calculate position risk: quantity * (entry - stop loss)
 		riskPerShare := pos.EntryPrice - pos.StopLossPrice
 		positionRisk := float64(pos.Quantity) * riskPerShare
 
@@ -405,7 +237,7 @@ func (rm *Manager) recordRiskEvent(event *Event) {
 	rm.riskEventsMutex.Lock()
 	defer rm.riskEventsMutex.Unlock()
 	rm.riskEvents = append(rm.riskEvents, event)
-	log.Printf("🚨 Risk Event: [%s] %s - %s\n", event.Severity, event.EventType, event.Details)
+	log.Printf("Risk Event: [%s] %s - %s\n", event.Severity, event.EventType, event.Details)
 }
 
 func (rm *Manager) GetRiskEvents(limit int) []*Event {
@@ -417,12 +249,6 @@ func (rm *Manager) GetRiskEvents(limit int) []*Event {
 		events = events[len(events)-limit:]
 	}
 	return events
-}
-
-func (rm *Manager) RegisterAlertCallback(callback AlertCallback) {
-	rm.alertCallbacksMutex.Lock()
-	defer rm.alertCallbacksMutex.Unlock()
-	rm.alertCallbacks = append(rm.alertCallbacks, callback)
 }
 
 func (rm *Manager) SendAlert(alert *Alert) {
@@ -444,36 +270,39 @@ func (rm *Manager) GenerateRiskReport(positions []*position.OpenPosition) Report
 	accountBalance := rm.GetAccountBalance()
 	dailyLossPercent := rm.GetDailyLossPercent()
 	portfolioRisk := rm.CalculatePortfolioRisk(positions)
-	openPosCount := rm.CountOpenPositions()
+
+	rm.accountBalanceMutex.RLock()
+	dailyLoss := rm.CurrentDailyLossAmount
+	rm.accountBalanceMutex.RUnlock()
 
 	report := Report{
 		Timestamp:           time.Now(),
 		AccountBalance:      accountBalance,
-		OpenPositions:       openPosCount,
-		DailyLoss:           rm.GetDailyLoss(),
+		OpenPositions:       len(positions),
+		DailyLoss:           dailyLoss,
 		DailyLossPercent:    dailyLossPercent,
 		MaxDailyLossPercent: rm.MaxDailyLossPercent,
 		DailyLossRemaining:  (rm.MaxDailyLossPercent - dailyLossPercent),
 		PortfolioRisk:       portfolioRisk,
 		HealthStatus:        "HEALTHY",
 		Alerts:              []string{},
+		RecentEvents:        rm.GetRiskEvents(5),
 	}
 
-	// Determine health status
 	if dailyLossPercent >= rm.MaxDailyLossPercent {
 		report.HealthStatus = "CRITICAL - DAILY LOSS LIMIT HIT"
-		report.Alerts = append(report.Alerts, "🛑 Daily loss limit reached. No new trades.")
+		report.Alerts = append(report.Alerts, " Daily loss limit reached. No new trades.")
 	} else if dailyLossPercent >= rm.MaxDailyLossPercent*0.75 {
 		report.HealthStatus = "WARNING"
-		report.Alerts = append(report.Alerts, fmt.Sprintf("⚠️  Daily loss at %.1f%% of limit", dailyLossPercent/rm.MaxDailyLossPercent*100))
+		report.Alerts = append(report.Alerts, fmt.Sprintf("  Daily loss at %.1f%% of limit", dailyLossPercent/rm.MaxDailyLossPercent*100))
 	}
 
 	if portfolioRisk.IsOverRisk {
-		report.Alerts = append(report.Alerts, fmt.Sprintf("⚠️  Portfolio risk at %.2f%% (max %.2f%%)", portfolioRisk.TotalRiskPercent, rm.MaxPortfolioRiskPercent))
+		report.Alerts = append(report.Alerts, fmt.Sprintf("  Portfolio risk at %.2f%% (max %.2f%%)", portfolioRisk.TotalRiskPercent, rm.MaxPortfolioRiskPercent))
 	}
 
-	if openPosCount >= rm.MaxOpenPositions {
-		report.Alerts = append(report.Alerts, fmt.Sprintf("⚠️  Max open positions (%d/%d) reached", openPosCount, rm.MaxOpenPositions))
+	if len(positions) >= rm.MaxOpenPositions {
+		report.Alerts = append(report.Alerts, fmt.Sprintf("  Max open positions (%d/%d) reached", len(positions), rm.MaxOpenPositions))
 	}
 
 	return report
@@ -481,7 +310,6 @@ func (rm *Manager) GenerateRiskReport(positions []*position.OpenPosition) Report
 
 // TYPES & STRUCTS
 
-// validation result for position/order checks
 type ValidationResult struct {
 	Valid    bool
 	Errors   []string
@@ -489,7 +317,6 @@ type ValidationResult struct {
 	Details  map[string]interface{}
 }
 
-// portfolio-wide risk assessment
 type PortfolioRisk struct {
 	TotalRiskAmount  float64
 	TotalRiskPercent float64
@@ -498,14 +325,12 @@ type PortfolioRisk struct {
 	IsOverRisk       bool
 }
 
-// individual position risk
 type PositionRisk struct {
 	Symbol      string
 	RiskAmount  float64
 	RiskPercent float64
 }
 
-// comprehensive risk report
 type Report struct {
 	Timestamp           time.Time
 	AccountBalance      float64
@@ -517,6 +342,7 @@ type Report struct {
 	PortfolioRisk       PortfolioRisk
 	HealthStatus        string
 	Alerts              []string
+	RecentEvents        []*Event
 }
 
 // prints a formatted risk report
@@ -537,6 +363,14 @@ func (r *Report) Print() {
 		fmt.Println("\nAlerts:")
 		for _, alert := range r.Alerts {
 			fmt.Printf("  %s\n", alert)
+		}
+	}
+
+	if len(r.RecentEvents) > 0 {
+		fmt.Println("\nRecent Risk Events (Last 5):")
+		for _, event := range r.RecentEvents {
+			fmt.Printf("  [%s] %s - %s (%s)\n",
+				event.Severity, event.EventType, event.Details, event.Timestamp.Format("15:04:05"))
 		}
 	}
 	fmt.Println(formatting.Separator(width) + "\n")

@@ -12,13 +12,11 @@ import (
 	database "github.com/fazecat/mongelmaker/Internal/database/sqlc"
 )
 
-// records a trade execution to the database
 func LogTradeExecution(ctx context.Context, symbol string, side string, quantity int64, price decimal.Decimal, alpacaOrderID string, status string) error {
 	if Queries == nil {
 		return fmt.Errorf("database queries not initialized")
 	}
 
-	// Calculate total value
 	totalValue := decimal.NewFromInt(quantity).Mul(price)
 
 	err := Queries.LogTrade(ctx, database.LogTradeParams{
@@ -40,7 +38,6 @@ func LogTradeExecution(ctx context.Context, symbol string, side string, quantity
 	return nil
 }
 
-// retrieves trade history for a symbol
 func GetTradeHistory(ctx context.Context, symbol string, limit int32) ([]database.GetTradeHistoryRow, error) {
 	if Queries == nil {
 		return nil, fmt.Errorf("database queries not initialized")
@@ -58,7 +55,6 @@ func GetTradeHistory(ctx context.Context, symbol string, limit int32) ([]databas
 	return trades, nil
 }
 
-// GetOpenTrades retrieves all open trades
 func GetOpenTrades(ctx context.Context) ([]database.GetAllOpenTradesRow, error) {
 	if Queries == nil {
 		return nil, fmt.Errorf("database queries not initialized")
@@ -67,6 +63,20 @@ func GetOpenTrades(ctx context.Context) ([]database.GetAllOpenTradesRow, error) 
 	trades, err := Queries.GetAllOpenTrades(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch open trades: %w", err)
+	}
+
+	return trades, nil
+}
+
+// GetAllTradesDebug returns ALL trades from database (for debugging)
+func GetAllTradesDebug(ctx context.Context) ([]database.GetAllTradesRow, error) {
+	if Queries == nil {
+		return nil, fmt.Errorf("database queries not initialized")
+	}
+
+	trades, err := Queries.GetAllTrades(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch all trades: %w", err)
 	}
 
 	return trades, nil

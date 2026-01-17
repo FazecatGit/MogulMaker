@@ -97,7 +97,12 @@ func main() {
 	// Initialize Trade Monitor
 	tradeMon := monitoring.NewMonitor(posManager, riskMgr)
 	log.Println("✅ Trade Monitor initialized")
-	log.Println("📌 Note: Previously executed trades will be loaded when Trade Monitor is accessed")
+
+	// Load historical trades from database
+	if err := tradeMon.InitializeTradeHistory(); err != nil {
+		log.Printf("⚠️  Could not load trade history: %v\n", err)
+	}
+	log.Println("📌 Previous trades loaded from database")
 
 	// for the scouting feature
 	err = datafeed.InitAlpacaClient()

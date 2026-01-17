@@ -220,15 +220,6 @@ func GetTradableAssets() ([]string, error) {
 	log.Printf("Fetched %d tradeable assets from Alpaca", len(symbols))
 	return symbols, nil
 }
-func GetPopularStocks() []string {
-	return []string{
-		"AAPL", "MSFT", "GOOGL", "AMZN", "TSLA", "NVDA", "META", "NFLX", "BABA", "ORCL",
-		"JPM", "BAC", "WFC", "C", "GS", "MS", "BLK", "AXP", "USB", "PNC",
-		"JNJ", "PFE", "MRK", "ABT", "TMO", "DHR", "BMY", "LLY", "AMGN", "GILD",
-		"XOM", "CVX", "COP", "EOG", "SLB", "HAL", "BKR", "OXY", "MPC", "PSX",
-		"KO", "PEP", "MDLZ", "MO", "PM", "CL", "KMB", "GIS", "SYY", "HSY",
-	}
-}
 
 func findLatestValue(m map[string]float64) *float64 {
 	if len(m) == 0 {

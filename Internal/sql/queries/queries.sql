@@ -215,7 +215,12 @@ LIMIT $2;
 -- name: GetAllOpenTrades :many
 SELECT id, symbol, side, quantity, price, total_value, alpaca_order_id, status, created_at
 FROM trades
-WHERE status = 'PENDING' OR status = 'FILLED'
+WHERE status IN ('PENDING', 'ACCEPTED', 'FILLED', 'PARTIALLY_FILLED')
+ORDER BY created_at DESC;
+
+-- name: GetAllTrades :many
+SELECT id, symbol, side, quantity, price, total_value, alpaca_order_id, status, created_at
+FROM trades
 ORDER BY created_at DESC;
 
 -- name: UpdateTradeStatus :exec
