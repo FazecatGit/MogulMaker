@@ -1,45 +1,38 @@
-## MongelMaker
+## MogulMaker
 
 # Description 
 
-This is a trading bot where it allows you to analyse stocks or crypto using the Alpaca API where it grabs the data from and showcases it into the Program with an analysis of each bar with different time frames.
-With that data you can see if that Stock/Crypto is good to invest with indication showcasing if its bullish/bearish and its Volitality level, by using caluclations of formulas. Granted the formulas might be skewed
-but it can be adjusted with the users theory of trading by adjusting the config or if you want to go the code and change it. 
-
-It also has a Screener where it will scan all the Stocks or Crpyto that Alapaca has provided and with the defualt scores I've done it will go through all of it in chunks and you as the user can look it up to see if
-meets your desire to invest your money towards it.
-
-Its still a working progress as this project was just meant to be for my understanding with GO and Python(still need to do it). 
+A trading bot analyzing stocks/crypto via Alpaca API. Provides bullish/bearish signals, volatility scores across timeframes, and a screener for assets. Interactive CLI menu with risk management and trade monitoring.
 
 # Motivation
-To be able to achieve understanding with how programming and the flow of indie developer, with its struggles and workarounds, espeically during the time of AI.
-I've learnt a bit with this as I've always get stuck at the start before AI was introduced, but with that little boost it has made me motivated to try and see what I can make with my ideas in my head.
+To undestand how GO works at its limit as a beginner and delving deep into its fundamentals. Whilst also trying out Machine learning with Python to see when trades are bad and adjust the scoring that I have to fit the
+threshold of profit.
 
-# Quick Start
-Make sure you have an Alpaca account where there will be instructions for you to follow to grab the API Code of your account making it linked.
+I would love to develop it further with C++ knowledge of AI Agents creating a robust analytical bot that'll suggest what trades to put in and give you indicators of when to sell off. But that'll require me developing it as
+another project/repo.
 
-After you have your Alpaca account make sure you put it in a .env file (and if you dont have it just name a file .env), paste the details and you should be ready to start!
+# Quick Start // Installation
 
-Alas, if you want to include Finnhubb (newscraping API) for the Stock you have selected, make sure you also include it to your .env with the API Token provided for you.
+git clone https://github.com/FazecatGit/MongelMaker.git
+cd MongelMaker
+cp .env.example .env
+# Add your APCA_API_KEY_ID, APCA_API_SECRET_KEY, and FINNHUB_API_KEY to .env
+# Also create a Postgre profile to store your data
+go mod tidy
+go build -o mongelmaker
+
+Populate your .env file:
+
+text
+APCA_API_KEY_ID=your_alpaca_key
+APCA_API_SECRET_KEY=your_alpaca_secret
+FINNHUB_API_KEY=your_finnhub_key (optional)
 
 # Usage
 
--v is turn on verbose mode 
+go run . / go run main.go; all the features will be there from the display menu on the CLI
+I will implement usage utlizing the CLI commands later when I get the chance.
 
 ## Contributing
 
-### Clone the repo
-
-```bash
-git clone https://github.com/fazecatGit/MongelMaker.git
-cd MongelMaker
-
-# Install Go 1.19+ if you haven't already
-# Set up your environment variables (create a .env file with your API keys)
-cp .env.example .env
-
-Build the application
-go build -o mongelmaker
-
-Once on the Root of the file
-go run . OR go run main.go
+Solo Project currently but will accept contributions later.
