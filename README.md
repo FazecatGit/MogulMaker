@@ -16,8 +16,8 @@ another project/repo.
 git clone https://github.com/FazecatGit/MongelMaker.git
 cd MongelMaker
 cp .env.example .env
-# Add your APCA_API_KEY_ID, APCA_API_SECRET_KEY, and FINNHUB_API_KEY to .env
-# Also create a Postgre profile to store your data
+//Add your APCA_API_KEY_ID, APCA_API_SECRET_KEY, and FINNHUB_API_KEY to .env
+//Also create a Postgre profile to store your data
 go mod tidy
 go build -o mongelmaker
 
