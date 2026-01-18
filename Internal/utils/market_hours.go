@@ -10,18 +10,16 @@ import (
 )
 
 func CheckMarketStatus(t time.Time, cfg *config.Config) (status string, isOpen bool) {
-	// 1. Convert input time to EST
 	timeInEST, err := time.LoadLocation("America/New_York")
 	if err != nil {
 		return "CLOSED", false
 	}
 	estTime := t.In(timeInEST)
 
-	// 2. Get total minutes since midnight
+	// Get total minutes since midnight
 	hour, min, _ := estTime.Clock()
 	totalMinutes := hour*60 + min
 
-	// 2. Check if it's a weekday (Mon-Fri)
 	weekday := estTime.Weekday()
 	if weekday == time.Saturday || weekday == time.Sunday {
 		return "CLOSED", false
@@ -43,7 +41,7 @@ func CheckMarketStatus(t time.Time, cfg *config.Config) (status string, isOpen b
 		return "CLOSED", false
 	}
 
-	// Then use these variables:
+	// Determine market status
 	if totalMinutes >= premktOpen && totalMinutes < regularOpen {
 		return "PREMARKET", true
 	} else if totalMinutes >= regularOpen && totalMinutes <= regularClose {

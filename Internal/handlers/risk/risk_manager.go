@@ -251,6 +251,37 @@ func (rm *Manager) GetRiskEvents(limit int) []*Event {
 	return events
 }
 
+// PrintRiskEvents displays recent risk events in a formatted table
+func (rm *Manager) PrintRiskEvents(limit int) {
+	events := rm.GetRiskEvents(limit)
+
+	if len(events) == 0 {
+		fmt.Println("✅ No risk events recorded")
+		return
+	}
+
+	width := 120
+	fmt.Println("\n" + formatting.Separator(width))
+	fmt.Println("🚨 RECENT RISK EVENTS")
+	fmt.Println(formatting.Separator(width))
+	fmt.Printf("%-10s %-25s %-10s %-40s %-20s\n",
+		"Severity", "Event Type", "Symbol", "Details", "Timestamp")
+	fmt.Println(formatting.Separator(width))
+
+	for _, event := range events {
+		// Truncate details if too long
+		details := event.Details
+		if len(details) > 40 {
+			details = details[:37] + "..."
+		}
+
+		fmt.Printf("%-10s %-25s %-10s %-40s %s\n",
+			event.Severity, event.EventType, event.Symbol, details,
+			event.Timestamp.Format("2006-01-02 15:04:05"))
+	}
+	fmt.Println(formatting.Separator(width) + "\n")
+}
+
 func (rm *Manager) SendAlert(alert *Alert) {
 	alert.Timestamp = time.Now()
 

@@ -95,13 +95,10 @@ func main() {
 	posManager := position.NewPositionManager(alpclient, orderConfig)
 
 	// Initialize Trade Monitor
-	tradeMon := monitoring.NewMonitor(posManager, riskMgr)
+	tradeMon := monitoring.NewMonitor(posManager, riskMgr, datafeed.Queries)
 	log.Println("✅ Trade Monitor initialized")
 
 	// Load historical trades from database
-	if err := tradeMon.InitializeTradeHistory(); err != nil {
-		log.Printf("⚠️  Could not load trade history: %v\n", err)
-	}
 	log.Println("📌 Previous trades loaded from database")
 
 	// for the scouting feature
