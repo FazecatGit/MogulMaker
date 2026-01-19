@@ -1,4 +1,4 @@
-package strategy
+package scanner
 
 import (
 	"context"
@@ -16,8 +16,13 @@ import (
 	signalsPkg "github.com/fazecat/mogulmaker/Internal/strategy/signals"
 	"github.com/fazecat/mogulmaker/Internal/types"
 	"github.com/fazecat/mogulmaker/Internal/utils"
-	"github.com/fazecat/mogulmaker/Internal/utils/config"
 )
+
+type TradeSignal struct {
+	Direction  string
+	Confidence float64
+	Reasoning  string
+}
 
 type ScreenerCriteria struct {
 	MinOversoldRSI float64
@@ -43,16 +48,11 @@ type StockScore struct {
 
 func DefaultScreenerCriteria() ScreenerCriteria {
 	return ScreenerCriteria{
-		MinOversoldRSI: 35,  // RSI < 35 indicates oversold
-		MaxRSI:         75,  // Avoid overbought
-		MinATR:         0.1, // Very low volatility threshold
-		MinVolumeRatio: 1.0, // Any volume above average
+		MinOversoldRSI: 35,
+		MaxRSI:         75,
+		MinATR:         0.1,
+		MinVolumeRatio: 1.0,
 	}
-}
-
-// default stock screener
-func ScreenStocks(symbols []string, timeframe string, numBars int, criteria ScreenerCriteria, newsStorage *NewsStorage) ([]StockScore, error) {
-	return ScreenStocksWithType(symbols, timeframe, numBars, criteria, newsStorage, "stock")
 }
 
 func ScreenStocksWithType(symbols []string, timeframe string, numBars int, criteria ScreenerCriteria, newsStorage *NewsStorage, assetType string) ([]StockScore, error) {
@@ -84,10 +84,6 @@ func ScreenStocksWithType(symbols []string, timeframe string, numBars int, crite
 	})
 
 	return results, nil
-}
-
-func scoreStock(symbol, timeframe string, numBars int, criteria ScreenerCriteria, newsStorage *NewsStorage) (score float64, signals []string, rsi, atr *float64, longSignal, shortSignal *TradeSignal, srValidation *signalsPkg.SignalValidationWithSR, err error) {
-	return scoreStockWithType(symbol, timeframe, numBars, criteria, newsStorage, "stock")
 }
 
 func scoreStockWithType(symbol, timeframe string, numBars int, criteria ScreenerCriteria, newsStorage *NewsStorage, assetType string) (score float64, signals []string, rsi, atr *float64, longSignal, shortSignal *TradeSignal, srValidation *signalsPkg.SignalValidationWithSR, err error) {
@@ -288,24 +284,41 @@ func findLatestValue(m map[string]float64) *float64 {
 	return &latestVal
 }
 
-func GetScreenerCriteriaFromProfile(cfg *config.Config, profilename string) (ScreenerCriteria, error) {
-	profile, exists := cfg.Profiles[profilename]
-	if !exists {
-		return ScreenerCriteria{}, fmt.Errorf("profile %s not found", profilename)
+func AnalyzeForShorts(bar datafeed.Bar, rsi *float64, atr *float64, criteria ScreenerCriteria) *TradeSignal {
+	if rsi == nil || atr == nil {
+		return nil
 	}
-
-	return ScreenerCriteria{
-		MinOversoldRSI: profile.Indicators.RSI.MinOversold,
-		MaxRSI:         profile.Indicators.RSI.MaxOverbought,
-		MinATR:         profile.Indicators.ATR.MinVolatility,
-		MinVolumeRatio: profile.Indicators.Volume.MinRatio,
-	}, nil
+	if *rsi > criteria.MaxRSI && *atr >= criteria.MinATR {
+		confidence := ((*rsi - criteria.MaxRSI) / (100 - criteria.MaxRSI)) * 100
+		if confidence > 100 {
+			confidence = 100
+		}
+		reasoning := "RSI indicates overbought conditions with sufficient volatility."
+		return &TradeSignal{
+			Direction:  "SHORT",
+			Confidence: confidence,
+			Reasoning:  reasoning,
+		}
+	}
+	return nil
 }
 
-func ScreenStockWithConfig(symbols []string, timeframe string, numBars int, cfg *config.Config, profileName string, newsStorage *NewsStorage) ([]StockScore, error) {
-	criteria, err := GetScreenerCriteriaFromProfile(cfg, profileName)
-	if err != nil {
-		return nil, err
+func AnalyzeForLongs(bar datafeed.Bar, rsi *float64, atr *float64, criteria ScreenerCriteria) *TradeSignal {
+	if rsi == nil || atr == nil {
+		return nil
 	}
-	return ScreenStocks(symbols, timeframe, numBars, criteria, newsStorage)
+	if *rsi < criteria.MinOversoldRSI && *atr >= criteria.MinATR {
+		confidence := (1 - (*rsi / criteria.MinOversoldRSI)) * 100
+		if confidence > 100 {
+			confidence = 100
+		}
+
+		reasoning := fmt.Sprintf("RSI oversold (%.1f) with ATR %.2f", *rsi, *atr)
+		return &TradeSignal{
+			Direction:  "LONG",
+			Confidence: confidence,
+			Reasoning:  reasoning,
+		}
+	}
+	return nil
 }

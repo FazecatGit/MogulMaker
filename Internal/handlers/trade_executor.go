@@ -13,17 +13,18 @@ import (
 	datafeed "github.com/fazecat/mogulmaker/Internal/database"
 	"github.com/fazecat/mogulmaker/Internal/strategy"
 	"github.com/fazecat/mogulmaker/Internal/utils/config"
+	"github.com/fazecat/mogulmaker/Internal/utils/scanner"
 )
 
 // displays detected signals and lets user execute trades
-func ExecuteTradesFromSignals(ctx context.Context, cfg *config.Config, scores []strategy.StockScore, client *alpaca.Client) {
+func ExecuteTradesFromSignals(ctx context.Context, cfg *config.Config, scores []scanner.StockScore, client *alpaca.Client) {
 	if client == nil {
 		fmt.Println("❌ Alpaca client not initialized")
 		return
 	}
 
 	// Filter scores with trade signals
-	var signalsAvailable []strategy.StockScore
+	var signalsAvailable []scanner.StockScore
 	for _, score := range scores {
 		if score.LongSignal != nil || score.ShortSignal != nil {
 			signalsAvailable = append(signalsAvailable, score)
@@ -76,7 +77,7 @@ func ExecuteTradesFromSignals(ctx context.Context, cfg *config.Config, scores []
 	fmt.Println("\n✅ Trade execution complete")
 }
 
-func executeTradeForSymbol(ctx context.Context, cfg *config.Config, score strategy.StockScore, client *alpaca.Client) {
+func executeTradeForSymbol(ctx context.Context, cfg *config.Config, score scanner.StockScore, client *alpaca.Client) {
 	fmt.Printf("\n💼 Trading %s:\n", score.Symbol)
 
 	// Show options
@@ -116,7 +117,7 @@ func executeTradeForSymbol(ctx context.Context, cfg *config.Config, score strate
 	}
 }
 
-func executeLongTrade(ctx context.Context, cfg *config.Config, score strategy.StockScore, client *alpaca.Client) {
+func executeLongTrade(ctx context.Context, cfg *config.Config, score scanner.StockScore, client *alpaca.Client) {
 	fmt.Print("Enter quantity to buy: ")
 	var qty int64
 	_, err := fmt.Scanln(&qty)
@@ -133,7 +134,7 @@ func executeLongTrade(ctx context.Context, cfg *config.Config, score strategy.St
 	}
 }
 
-func executeShortTrade(ctx context.Context, cfg *config.Config, score strategy.StockScore, client *alpaca.Client) {
+func executeShortTrade(ctx context.Context, cfg *config.Config, score scanner.StockScore, client *alpaca.Client) {
 	fmt.Print("Enter quantity to short: ")
 	var qty int64
 	_, err := fmt.Scanln(&qty)

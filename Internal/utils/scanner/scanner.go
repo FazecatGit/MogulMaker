@@ -8,13 +8,8 @@ import (
 
 	db "github.com/fazecat/mogulmaker/Internal/database"
 	database "github.com/fazecat/mogulmaker/Internal/database/sqlc"
-	"github.com/fazecat/mogulmaker/Internal/strategy"
-	"github.com/fazecat/mogulmaker/Internal/strategy/detection"
-	"github.com/fazecat/mogulmaker/Internal/strategy/indicators"
 	"github.com/fazecat/mogulmaker/Internal/types"
-	"github.com/fazecat/mogulmaker/Internal/utils/analyzer"
 	"github.com/fazecat/mogulmaker/Internal/utils/config"
-	"github.com/fazecat/mogulmaker/Internal/utils/scoring"
 )
 
 func ShouldScan(ctx context.Context, profileName string, cfg *config.Config, q *database.Queries) (bool, error) {
@@ -29,7 +24,6 @@ func ShouldScan(ctx context.Context, profileName string, cfg *config.Config, q *
 	return false, nil
 }
 
-// PerformScan scans all watchlist symbols and updates scores
 func PerformScan(ctx context.Context, profileName string, cfg *config.Config, q *database.Queries) (int, error) {
 	watchlist, err := q.GetWatchlist(ctx)
 	if err != nil {
@@ -37,61 +31,27 @@ func PerformScan(ctx context.Context, profileName string, cfg *config.Config, q 
 	}
 
 	scannedCount := 0
+	criteria := DefaultScreenerCriteria()
 
 	for _, item := range watchlist {
 		symbol := item.Symbol
 
-		bars, err := db.GetAlpacaBars(symbol, "1Day", 100, "")
-		if err != nil {
+		// Use the advanced screener logic
+		stockScores, err := ScreenStocksWithType([]string{symbol}, "1Day", 100, criteria, nil, "stock")
+		if err != nil || len(stockScores) == 0 {
 			continue
 		}
 
-		// Calculate indicators
-		vwapCalc := indicators.NewVWAPCalculator(bars)
-		vwapPrice := vwapCalc.Calculate()
+		result := stockScores[0]
 
-		closes := make([]float64, len(bars))
-		for i, bar := range bars {
-			closes[i] = bar.Close
-		}
-		rsiValues, err := indicators.CalculateRSI(closes, 14)
-		if err != nil {
-			rsiValues = []float64{50}
-		}
-		rsiValue := rsiValues[len(rsiValues)-1]
-
-		if len(rsiValues) > 0 && len(bars) >= 14 {
-			startIdx := len(bars) - len(rsiValues)
-			for i, rsi := range rsiValues {
-				barIdx := startIdx + i
-				if barIdx >= 0 && barIdx < len(bars) {
-					timestamp, _ := time.Parse(time.RFC3339, bars[barIdx].Timestamp)
-					db.SaveRSI(symbol, timestamp, rsi)
-				}
-			}
-		}
-
-		atrValue := scoring.CalculateATRFromBars(bars)
-		atrCategory := scoring.CategorizeATRValue(atrValue, bars)
-
-		if len(bars) > 0 {
-			latestTimestamp, _ := time.Parse(time.RFC3339, bars[len(bars)-1].Timestamp)
-			db.SaveATR(symbol, latestTimestamp, atrValue)
-		}
-
-		whaleEvents := detection.DetectWhales("", bars)
-		whaleCount := len(whaleEvents)
-
-		scoringInput, err := scoring.BuildScoringInput(bars, vwapPrice, rsiValue, whaleCount, atrValue, atrCategory)
-		if err != nil {
+		// Skip if no meaningful data
+		if result.Score == 0 && len(result.Signals) == 0 {
 			continue
 		}
 
-		weights := cfg.Profiles[profileName].SignalWeights
-		score := detection.CalculateInterestScore(scoringInput, weights)
-
+		// Update watchlist score
 		err = q.UpdateWatchlistScore(ctx, database.UpdateWatchlistScoreParams{
-			Score:  float32(score),
+			Score:  float32(result.Score),
 			Symbol: symbol,
 		})
 		if err != nil {
@@ -128,7 +88,7 @@ func GetNextScanDue(lastScan time.Time, profileName string, cfg *config.Config) 
 }
 
 func PerformProfileScan(ctx context.Context, profileName string, minScore float64, offset int, batchSize int, cfg *config.Config) ([]types.Candidate, int, error) {
-	symbols, err := strategy.GetTradableAssets()
+	symbols, err := GetTradableAssets()
 	if err != nil {
 		return nil, 0, fmt.Errorf("failed to fetch tradeable assets: %v", err)
 	}
@@ -145,27 +105,49 @@ func PerformProfileScan(ctx context.Context, profileName string, minScore float6
 	}
 
 	candidates := []types.Candidate{}
+	criteria := DefaultScreenerCriteria()
 
 	for i := offset; i < end; i++ {
 		symbol := symbols[i]
+
+		// Use the advanced screener logic instead of simple scoring
+		stockScores, err := ScreenStocksWithType([]string{symbol}, "1Day", 100, criteria, nil, "stock")
+		if err != nil || len(stockScores) == 0 {
+			continue
+		}
+
+		result := stockScores[0]
+
+		if result.Score == 0 && len(result.Signals) == 0 {
+			continue
+		}
+
+		analysis := "No signals"
+		if len(result.Signals) > 0 {
+			analysis = result.Signals[0] // Use first signal as primary analysis
+		}
 
 		bars, err := db.GetAlpacaBars(symbol, "1Day", 100, "")
 		if err != nil {
 			continue
 		}
 
-		if len(bars) == 0 {
-			continue
+		candidate := types.Candidate{
+			Symbol:   symbol,
+			Score:    result.Score,
+			Analysis: analysis,
+			Bars:     bars,
 		}
 
-		weights := cfg.Profiles[profileName].SignalWeights
-		candidate, err := analyzer.CalculateCandidateMetrics(ctx, symbol, bars, cfg, weights)
-		if err != nil {
-			continue
+		if result.RSI != nil {
+			candidate.RSI = *result.RSI
+		}
+		if result.ATR != nil {
+			candidate.ATR = *result.ATR
 		}
 
 		if candidate.Score >= minScore {
-			candidates = append(candidates, *candidate)
+			candidates = append(candidates, candidate)
 		}
 	}
 

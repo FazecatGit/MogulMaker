@@ -37,7 +37,6 @@ func NewSupportResistanceValidator() *SupportResistanceValidator {
 	}
 }
 
-// ValidateSignalWithSR checks if a signal is valid given current support/resistance levels
 func (srv *SupportResistanceValidator) ValidateSignalWithSR(
 	signal *types.TradeSignal,
 	bars []types.Bar,
@@ -72,7 +71,6 @@ func (srv *SupportResistanceValidator) ValidateSignalWithSR(
 	atSupport := indicators.IsAtSupport(currentPrice, support)
 	atResistance := indicators.IsAtResistance(currentPrice, resistance)
 
-	// Scoring logic
 	score := 50.0 // neutral starting point
 
 	// higher the score the better for LONG signals
@@ -163,7 +161,7 @@ func (srv *SignalValidationWithSR) IsBreakoutBelowSupport(currentPrice, support 
 	return currentPrice < support*0.995
 }
 
-// validates multiple signals and returns those passing S/R validation
+// views multiple signals and returns those passing S/R validation
 func (srv *SupportResistanceValidator) ValidateBatchWithSR(
 	signals []*types.TradeSignal,
 	bars []types.Bar,

@@ -186,221 +186,6 @@ func HandleAnalyzeSingle(ctx context.Context, assetType string, q *database.Quer
 	}
 }
 
-func HandleScreener(ctx context.Context, cfg *config.Config, q *database.Queries) {
-	assetType, err := interactive.ShowAssetTypeMenu()
-	if err != nil {
-		fmt.Println("❌ Invalid asset type")
-		return
-	}
-
-	var symbols []string
-	if assetType == "crypto" {
-		fmt.Println("\n📝 Enter crypto symbols (comma-separated, e.g., BTC/USD):")
-		reader := bufio.NewReader(os.Stdin)
-		input, _ := reader.ReadString('\n')
-		input = strings.TrimSpace(input)
-		if input == "" {
-			fmt.Println("❌ No symbols entered")
-			return
-		}
-		for _, sym := range strings.Split(input, ",") {
-			symbols = append(symbols, strings.TrimSpace(sym))
-		}
-	}
-
-	if len(symbols) == 0 {
-		fmt.Println("❌ Could not get symbols")
-		return
-	}
-
-	criteria := strategy.DefaultScreenerCriteria()
-
-	fmt.Printf("🔍 Screening %s (%d symbols)...\n", assetType, len(symbols))
-	results, err := strategy.ScreenStocksWithType(symbols, "1Day", 100, criteria, nil, assetType)
-	if err != nil {
-		fmt.Printf("❌ Screener failed: %v\n", err)
-		return
-	}
-
-	if len(results) == 0 {
-		fmt.Println("📭 No symbols matched criteria")
-		return
-	}
-
-	fmt.Printf("\n📊 Screening Results (%d total):\n", len(results))
-	fmt.Println("==========================================")
-	fmt.Println("# | Symbol | Score  | RSI    | ATR    | Signals                    | Analysis")
-	fmt.Println("--|--------|--------|--------|--------|----------------------------|----------------------")
-
-	for i, stock := range results {
-		rsiStr := "  -   "
-		if stock.RSI != nil {
-			rsiStr = fmt.Sprintf("%6.2f", *stock.RSI)
-		}
-
-		atrStr := "  -   "
-		if stock.ATR != nil {
-			atrStr = fmt.Sprintf("%6.2f", *stock.ATR)
-		}
-
-		signalsStr := ""
-		if len(stock.Signals) > 0 {
-			for j, sig := range stock.Signals {
-				if j > 0 {
-					signalsStr += ", "
-				}
-				signalsStr += sig
-			}
-		} else {
-			signalsStr = "-"
-		}
-
-		if len(signalsStr) > 26 {
-			signalsStr = signalsStr[:23] + "..."
-		}
-
-		analysis := "---"
-		if stock.RSI != nil {
-			if *stock.RSI > 70 {
-				analysis = "🔴 Overbought"
-			} else if *stock.RSI < 30 {
-				analysis = "🟢 Oversold"
-			} else if *stock.RSI > 50 {
-				analysis = "📈 Bullish"
-			} else {
-				analysis = "📉 Bearish"
-			}
-		}
-
-		fmt.Printf("%2d| %s | %.2f | %s | %s | %-26s | %s\n",
-			i+1, stock.Symbol, stock.Score, rsiStr, atrStr, signalsStr, analysis)
-	}
-
-	fmt.Print("\nSelect stock for details (or press Enter to skip): ")
-	var choice int
-	_, err = fmt.Scanln(&choice)
-	if err != nil || choice < 1 || choice > len(results) {
-		return
-	}
-
-	selectedStock := results[choice-1]
-
-	fmt.Printf("\n" + strings.Repeat("=", 80) + "\n")
-	fmt.Printf("📊 Detailed Analysis: %s\n", selectedStock.Symbol)
-	fmt.Printf(strings.Repeat("=", 80) + "\n\n")
-
-	fmt.Printf("🎯 Score: %.2f\n", selectedStock.Score)
-
-	if selectedStock.RSI != nil {
-		fmt.Printf("📈 RSI (14): %.2f", *selectedStock.RSI)
-		if *selectedStock.RSI > 70 {
-			fmt.Print(" 🔴 Overbought")
-		} else if *selectedStock.RSI < 30 {
-			fmt.Print(" 🟢 Oversold")
-		}
-		fmt.Println()
-	}
-
-	if selectedStock.LongSignal != nil {
-		fmt.Printf("\n📈 LONG Signal: %s (Confidence: %.1f%%)\n", selectedStock.LongSignal.Direction, selectedStock.LongSignal.Confidence)
-		fmt.Printf("   Reason: %s\n", selectedStock.LongSignal.Reasoning)
-	}
-
-	if selectedStock.ShortSignal != nil {
-		fmt.Printf("\n📉 SHORT Signal: %s (Confidence: %.1f%%)\n", selectedStock.ShortSignal.Direction, selectedStock.ShortSignal.Confidence)
-		fmt.Printf("   Reason: %s\n", selectedStock.ShortSignal.Reasoning)
-	}
-
-	// Display S/R validation
-	if selectedStock.SRValidation != nil {
-		fmt.Printf("\n📍 S/R Analysis: Score %.0f/100", selectedStock.SRValidation.ValidationScore)
-		if selectedStock.SRValidation.IsValidLocation {
-			fmt.Print(" ✅")
-		} else {
-			fmt.Print(" ⚠️")
-		}
-		fmt.Printf("\n   Support: $%.2f | Resistance: $%.2f | Current: $%.2f\n",
-			selectedStock.SRValidation.SupportLevel,
-			selectedStock.SRValidation.ResistanceLevel,
-			selectedStock.SRValidation.CurrentPrice)
-		fmt.Printf("   %s\n", selectedStock.SRValidation.DetailedAnalysis)
-		fmt.Printf("   %s\n", selectedStock.SRValidation.RecommendedAction)
-	}
-
-	if selectedStock.ATR != nil {
-		fmt.Printf("📊 ATR: %.2f", *selectedStock.ATR)
-		if *selectedStock.ATR > 1.0 {
-			fmt.Print(" ⚠️ High Volatility")
-		}
-		fmt.Println()
-	}
-
-	if len(selectedStock.Signals) > 0 {
-		fmt.Println("\n🔔 Signals:")
-		for _, sig := range selectedStock.Signals {
-			fmt.Printf("   • %s\n", sig)
-		}
-	}
-
-	if selectedStock.Recommendation != "" {
-		fmt.Printf("\n📝 Recommendation: %s\n", selectedStock.Recommendation)
-	}
-
-	fmt.Println("\n📰 Fetching recent news...")
-	finnhubClient := newsscraping.NewFinnhubClient()
-	newsArticles, err := finnhubClient.FetchNews(selectedStock.Symbol, 5)
-	if err != nil {
-		fmt.Printf("⚠️ Could not fetch news: %v\n", err)
-	} else if len(newsArticles) > 0 {
-		fmt.Printf("\n📰 Recent News (%d articles):\n", len(newsArticles))
-		fmt.Println(strings.Repeat("-", 80))
-		for i, article := range newsArticles {
-			sentimentIcon := "⚪"
-			switch article.Sentiment {
-			case newsscraping.Positive:
-				sentimentIcon = "🟢"
-			case newsscraping.Negative:
-				sentimentIcon = "🔴"
-			}
-
-			catalystIcon := ""
-			if article.CatalystType != newsscraping.NoCatalyst {
-				catalystIcon = fmt.Sprintf(" [%s]", article.CatalystType)
-			}
-
-			fmt.Printf("\n%d. %s %s%s\n", i+1, sentimentIcon, article.Headline, catalystIcon)
-			fmt.Printf("   🔗 %s\n", article.URL)
-			fmt.Printf("   📅 %s\n", article.PublishedAt.Format("Jan 02, 2006 15:04"))
-		}
-		fmt.Println()
-	} else {
-		fmt.Println("📭 No recent news found")
-	}
-
-	fmt.Print("\n➕ Add to watchlist? (y/n): ")
-	var addChoice string
-	fmt.Scanln(&addChoice)
-
-	if strings.ToLower(addChoice) == "y" {
-		reason := "Added from screener"
-		if selectedStock.Recommendation != "" {
-			reason = fmt.Sprintf("Added from screener - %s", selectedStock.Recommendation)
-			if len(reason) > 200 {
-				reason = reason[:200]
-			}
-		}
-		_, err = watchlist.AddToWatchlist(ctx, q, selectedStock.Symbol, "stock", selectedStock.Score, reason)
-		if err != nil {
-			fmt.Printf("❌ Failed to add to watchlist: %v\n", err)
-			return
-		}
-		fmt.Printf("✅ Added %s to watchlist (Score: %.2f)\n", selectedStock.Symbol, selectedStock.Score)
-	}
-
-	fmt.Println("\n--- Press Enter to continue ---")
-	bufio.NewReader(os.Stdin).ReadBytes('\n')
-}
-
 func HandleWatchlist(ctx context.Context, q *database.Queries) {
 	watchlist, err := q.GetWatchlist(ctx)
 	if err != nil {
@@ -682,7 +467,7 @@ func HandleExecuteTrades(ctx context.Context, cfg *config.Config, q *database.Qu
 	// Auto-calculate quantity if needed
 	if quantity == 0 {
 		quantity = strategy.CalculatePositionSize(accountValue, entryPrice, stopLoss, orderConfig.MaxPortfolioPercent, orderConfig)
-		fmt.Printf("📐 Auto-calculated quantity: %d shares\n", quantity)
+		fmt.Printf("Auto-calculated quantity: %d shares\n", quantity)
 	}
 
 	// Create order request
@@ -729,27 +514,25 @@ func HandleExecuteTrades(ctx context.Context, cfg *config.Config, q *database.Qu
 	fmt.Printf("Risk/Reward Ratio:   1:%.2f\n", validation.PotentialGain/validation.RiskAmount)
 	fmt.Println(separator)
 
-	// Confirm trade
-	fmt.Print("\n⚠️  CONFIRM TRADE? (yes/no): ")
+	fmt.Print("\nCONFIRM TRADE? (yes/no): ")
 	var confirm string
 	_, err = fmt.Scanln(&confirm)
 	if err != nil || (confirm != "yes" && confirm != "y") {
-		fmt.Println("❌ Trade cancelled")
+		fmt.Println("Trade cancelled")
 		return
 	}
 
 	// Build Alpaca order
 	alpacaOrder, err := strategy.BuildPlaceOrderRequest(orderReq)
 	if err != nil {
-		fmt.Printf("❌ Failed to build order: %v\n", err)
+		fmt.Printf("Failed to build order: %v\n", err)
 		return
 	}
 
-	// Execute trade
-	fmt.Println("\n⏳ Executing trade...")
+	fmt.Println("\nExecuting trade...")
 	order, err := client.PlaceOrder(*alpacaOrder)
 	if err != nil {
-		fmt.Printf("❌ Trade execution failed: %v\n", err)
+		fmt.Printf("Trade execution failed: %v\n", err)
 		return
 	}
 
@@ -762,26 +545,24 @@ func HandleExecuteTrades(ctx context.Context, cfg *config.Config, q *database.Qu
 
 	posManager.AddPosition(order, signal, entryPrice, stopLoss, takeProfit, safeBail)
 
-	// Log execution
 	strategy.LogOrderExecution(orderReq, validation, order.ID)
 
 	// Log trade to database for persistent storage
 	err = datafeed.LogTradeExecution(ctx, order.Symbol, direction, orderReq.Quantity,
 		decimal.NewFromFloat(entryPrice), order.ID, order.Status)
 	if err != nil {
-		log.Printf("⚠️  Warning: Could not log trade to database: %v\n", err)
+		log.Printf(" Warning: Could not log trade to database: %v\n", err)
 	}
 
-	fmt.Println("\n✅ TRADE EXECUTED SUCCESSFULLY!")
+	fmt.Println("\nTRADE EXECUTED SUCCESSFULLY!")
 	fmt.Printf("Order ID: %s | Status: %s\n", order.ID, order.Status)
-	fmt.Println("\n📡 Position monitoring enabled in background")
+	fmt.Println("\nPosition monitoring enabled in background")
 	fmt.Println("   View it anytime via: Trade Monitor (Option 9)")
 
 	// Start monitoring position in background
 	go posManager.MonitorPositions(ctx, 5*time.Second)
 }
 
-// HandleClosePosition closes/sells an open position
 func HandleClosePosition(ctx context.Context, client *alpaca.Client, cfg *config.Config) {
 	ClearInputBuffer()
 
@@ -807,14 +588,14 @@ func HandleClosePosition(ctx context.Context, client *alpaca.Client, cfg *config
 		return
 	}
 
-	fmt.Println("\n⏳ Closing position...")
+	fmt.Println("\nClosing position...")
 	order, err := client.ClosePosition(symbol, alpaca.ClosePositionRequest{})
 	if err != nil {
-		fmt.Printf("❌ Failed to close position: %v\n", err)
+		fmt.Printf("Failed to close position: %v\n", err)
 		return
 	}
 
-	fmt.Println("\n POSITION CLOSED SUCCESSFULLY!")
+	fmt.Println("\nPOSITION CLOSED SUCCESSFULLY!")
 	fmt.Printf("Symbol: %s\n", order.Symbol)
 	fmt.Printf("Order ID: %s | Status: %s\n", order.ID, order.Status)
 	if order.FilledAvgPrice != nil {
@@ -835,16 +616,16 @@ func HandleTradeHistory(ctx context.Context, cfg *config.Config, q *database.Que
 	if symbol == "" || symbol == "all" {
 		trades, err := datafeed.GetOpenTrades(ctx)
 		if err != nil {
-			fmt.Printf("❌ Error retrieving open trades: %v\n", err)
+			fmt.Printf("Error retrieving open trades: %v\n", err)
 			return
 		}
 
 		if len(trades) > 0 {
-			displayCount := 10 // Start with 10 trades
+			displayCount := 10
 			totalTrades := len(trades)
 
 			for {
-				// Get trades to display (up to displayCount)
+				// Get trades to display
 				endIndex := displayCount
 				if endIndex > totalTrades {
 					endIndex = totalTrades
@@ -859,7 +640,7 @@ func HandleTradeHistory(ctx context.Context, cfg *config.Config, q *database.Que
 
 				// Show pagination options
 				if endIndex < totalTrades {
-					fmt.Printf("\n💡 Showing %d of %d trades\n", endIndex, totalTrades)
+					fmt.Printf("\n Showing %d of %d trades\n", endIndex, totalTrades)
 					fmt.Print("Press Enter to load 10 more, or type 'q' to quit: ")
 					var input string
 					fmt.Scanln(&input)
@@ -870,37 +651,24 @@ func HandleTradeHistory(ctx context.Context, cfg *config.Config, q *database.Que
 
 					displayCount += 10
 				} else {
-					fmt.Printf("\n✅ All %d trades displayed\n", totalTrades)
+					fmt.Printf("\nAll %d trades displayed\n", totalTrades)
 					break
 				}
 			}
 		} else {
-			fmt.Println("\n📝 No trades found in database")
-
-			// Debug: Check ALL trades regardless of status
-			allTrades, debugErr := datafeed.GetAllTradesDebug(ctx)
-			if debugErr == nil && len(allTrades) > 0 {
-				fmt.Println("\n🔍 DEBUG: Trades exist but with different statuses:")
-				for _, trade := range allTrades {
-					fmt.Printf("  %s | %s x %s | Status: %s\n",
-						trade.Symbol, trade.Side, trade.Quantity, trade.Status.String)
-				}
-			}
-
-			fmt.Println("\n💡 Tip: Trades are logged to the database when executed through MongelMaker")
-			fmt.Println("   Your open positions in Alpaca can be viewed in the Trade Monitor (Option 9)")
+			fmt.Println("\nNo trades found in database")
 		}
 	} else {
-		trades, err := datafeed.GetTradeHistory(ctx, symbol, 100) // Increased from 50 to 100
+		trades, err := datafeed.GetTradeHistory(ctx, symbol, 100)
 		if err != nil {
-			fmt.Printf("❌ Error retrieving trades: %v\n", err)
+			fmt.Printf("Error retrieving trades: %v\n", err)
 			return
 		}
 
 		if len(trades) == 0 {
-			fmt.Println("\n📝 No trades found for " + symbol)
-			fmt.Println("💡 Tip: Trades are logged to the database when executed through MongelMaker")
-			fmt.Println("   Your open positions in Alpaca can be viewed in the Trade Monitor (Option 9)")
+			fmt.Println("\nNo trades found for " + symbol)
+			fmt.Println("Tip: Trades are logged to the database when executed through MongelMaker")
+			fmt.Println("Your open positions in Alpaca can be viewed in the Trade Monitor (Option 9)")
 			return
 		}
 
@@ -908,22 +676,22 @@ func HandleTradeHistory(ctx context.Context, cfg *config.Config, q *database.Que
 		displayCount := 10
 
 		for {
-			// Get trades to display (up to displayCount)
+			// Get trades to display
 			endIndex := displayCount
 			if endIndex > totalTrades {
 				endIndex = totalTrades
 			}
 
-			fmt.Printf("\n📋 Trade History for %s (Showing %d of %d):\n", symbol, endIndex, totalTrades)
+			fmt.Printf("\nTrade History for %s (Showing %d of %d):\n", symbol, endIndex, totalTrades)
 			for i := 0; i < endIndex; i++ {
 				trade := trades[i]
 				fmt.Printf("  %s x %s @ %s | Total: %s | Status: %s\n",
 					trade.Side, trade.Quantity, trade.Price, trade.TotalValue, trade.Status)
 			}
 
-			// Show pagination options
+			// Show pagination options | extension
 			if endIndex < totalTrades {
-				fmt.Printf("\n💡 Showing %d of %d trades\n", endIndex, totalTrades)
+				fmt.Printf("\nShowing %d of %d trades\n", endIndex, totalTrades)
 				fmt.Print("Press Enter to load 10 more, or type 'q' to quit: ")
 				var input string
 				fmt.Scanln(&input)
@@ -971,7 +739,7 @@ func HandleWatchlistMenu(ctx context.Context, cfg *config.Config, q *database.Qu
 
 func HandleAnalyzeAssetType(ctx context.Context, cfg *config.Config, q *database.Queries, newsStorage *newsscraping.NewsStorage, finnhubClient *newsscraping.FinnhubClient) {
 	for {
-		fmt.Println("\n🔬 Analyze:")
+		fmt.Println("\nAnalyze:")
 		fmt.Println("1. Stock")
 		if cfg.Features.CryptoSupport {
 			fmt.Println("2. Crypto")
@@ -984,7 +752,7 @@ func HandleAnalyzeAssetType(ctx context.Context, cfg *config.Config, q *database
 		var choice int
 		_, err := fmt.Scanln(&choice)
 		if err != nil {
-			fmt.Println("❌ Invalid input")
+			fmt.Println("Invalid input")
 			continue
 		}
 
@@ -997,7 +765,7 @@ func HandleAnalyzeAssetType(ctx context.Context, cfg *config.Config, q *database
 		} else if (choice == 2 && !cfg.Features.CryptoSupport) || (choice == 3 && cfg.Features.CryptoSupport) {
 			return
 		} else {
-			fmt.Println("❌ Invalid choice")
+			fmt.Println("Invalid choice")
 		}
 	}
 }
@@ -1007,7 +775,7 @@ func HandleDisplayRiskManager(riskManager interface{}, positionManager interface
 	// Use type assertion directly instead of reflection
 	rm, ok := riskManager.(*risk.Manager)
 	if !ok || rm == nil {
-		fmt.Println("⚠️  Risk Manager not available yet")
+		fmt.Println("Risk Manager not available yet")
 		return
 	}
 
@@ -1017,7 +785,7 @@ func HandleDisplayRiskManager(riskManager interface{}, positionManager interface
 		// Sync with Alpaca first
 		ctx := context.Background()
 		if err := pm.SyncFromAlpaca(ctx); err != nil {
-			fmt.Printf("Warning: Could not sync positions: %v\n", err)
+			fmt.Printf("Could not sync positions: %v\n", err)
 		}
 		positions = pm.GetOpenPositions()
 	}
@@ -1027,7 +795,6 @@ func HandleDisplayRiskManager(riskManager interface{}, positionManager interface
 	report.Print()
 }
 
-// HandleDisplayTradeMonitor shows the trade statistics and open positions
 func HandleDisplayTradeMonitor(tradeMonitor interface{}) {
 	type Monitor interface {
 		PrintStatsReport()
@@ -1038,7 +805,7 @@ func HandleDisplayTradeMonitor(tradeMonitor interface{}) {
 
 	if tm, ok := tradeMonitor.(Monitor); ok {
 		// Show menu for what to display
-		fmt.Println("\n📊 Trade Monitor Menu:")
+		fmt.Println("\nTrade Monitor Menu:")
 		fmt.Println("1. Open Positions")
 		fmt.Println("2. Trade Statistics")
 		fmt.Println("3. Trade History")
@@ -1072,6 +839,6 @@ func HandleDisplayTradeMonitor(tradeMonitor interface{}) {
 			return
 		}
 	} else {
-		fmt.Println("⚠️  Trade Monitor not available yet")
+		fmt.Println("Trade Monitor not available yet")
 	}
 }

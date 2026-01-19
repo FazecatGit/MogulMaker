@@ -9,12 +9,12 @@ import (
 	sqlc "github.com/fazecat/mogulmaker/Internal/database/sqlc"
 	"github.com/fazecat/mogulmaker/Internal/export"
 	newsscraping "github.com/fazecat/mogulmaker/Internal/news_scraping"
-	"github.com/fazecat/mogulmaker/Internal/strategy"
 	"github.com/fazecat/mogulmaker/Internal/strategy/indicators"
 	"github.com/fazecat/mogulmaker/Internal/strategy/signals"
 	"github.com/fazecat/mogulmaker/Internal/types"
 	"github.com/fazecat/mogulmaker/Internal/utils"
 	"github.com/fazecat/mogulmaker/Internal/utils/analyzer"
+	"github.com/fazecat/mogulmaker/Internal/utils/scanner"
 	"github.com/fazecat/mogulmaker/Internal/utils/scoring"
 )
 
@@ -161,7 +161,7 @@ func ShowMainMenu() (string, error) {
 	}
 }
 
-func PickStockFromResults(results []strategy.StockScore) (string, error) {
+func PickStockFromResults(results []scanner.StockScore) (string, error) {
 	fmt.Println("\nSelect a stock to analyze in detail:")
 	for i, result := range results {
 		rsiStr := "-"
