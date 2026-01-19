@@ -7,8 +7,8 @@ import (
 	"time"
 
 	"github.com/alpacahq/alpaca-trade-api-go/v3/alpaca"
-	"github.com/fazecat/mongelmaker/Internal/strategy/position"
-	"github.com/fazecat/mongelmaker/Internal/utils/formatting"
+	"github.com/fazecat/mogulmaker/Internal/strategy/position"
+	"github.com/fazecat/mogulmaker/Internal/utils/formatting"
 )
 
 // Portfolio-level risk controls and limits

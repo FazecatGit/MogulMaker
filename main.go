@@ -9,16 +9,16 @@ import (
 	"time"
 
 	"github.com/alpacahq/alpaca-trade-api-go/v3/alpaca"
-	datafeed "github.com/fazecat/mongelmaker/Internal/database"
-	"github.com/fazecat/mongelmaker/Internal/handlers"
-	"github.com/fazecat/mongelmaker/Internal/handlers/monitoring"
-	"github.com/fazecat/mongelmaker/Internal/handlers/risk"
-	newsscraping "github.com/fazecat/mongelmaker/Internal/news_scraping"
-	"github.com/fazecat/mongelmaker/Internal/strategy"
-	"github.com/fazecat/mongelmaker/Internal/strategy/position"
-	"github.com/fazecat/mongelmaker/Internal/utils"
-	"github.com/fazecat/mongelmaker/Internal/utils/config"
-	"github.com/fazecat/mongelmaker/Internal/utils/scanner"
+	datafeed "github.com/fazecat/mogulmaker/Internal/database"
+	"github.com/fazecat/mogulmaker/Internal/handlers"
+	"github.com/fazecat/mogulmaker/Internal/handlers/monitoring"
+	"github.com/fazecat/mogulmaker/Internal/handlers/risk"
+	newsscraping "github.com/fazecat/mogulmaker/Internal/news_scraping"
+	"github.com/fazecat/mogulmaker/Internal/strategy"
+	"github.com/fazecat/mogulmaker/Internal/strategy/position"
+	"github.com/fazecat/mogulmaker/Internal/utils"
+	"github.com/fazecat/mogulmaker/Internal/utils/config"
+	"github.com/fazecat/mogulmaker/Internal/utils/scanner"
 	"github.com/joho/godotenv"
 )
 
@@ -35,7 +35,7 @@ func main() {
 
 	// Test the retry logic
 	// utils.TestRetryLogic()
-	// "github.com/fazecat/mongelmaker/Internal/utils"
+	// "github.com/fazecat/mogulmaker/Internal/utils"
 
 	apiKey := os.Getenv("ALPACA_API_KEY")
 	secretKey := os.Getenv("ALPACA_API_SECRET")

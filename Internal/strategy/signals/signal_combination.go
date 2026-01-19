@@ -3,9 +3,9 @@ package signals
 import (
 	"fmt"
 
-	"github.com/fazecat/mongelmaker/Internal/strategy/detection"
-	"github.com/fazecat/mongelmaker/Internal/strategy/indicators"
-	"github.com/fazecat/mongelmaker/Internal/types"
+	"github.com/fazecat/mogulmaker/Internal/strategy/detection"
+	"github.com/fazecat/mogulmaker/Internal/strategy/indicators"
+	"github.com/fazecat/mogulmaker/Internal/types"
 )
 
 // Default weights for signal components
@@ -145,7 +145,7 @@ func calculateSRScore(bars []types.Bar) float64 {
 	return 0.0
 }
 
-// MapScoreToRecommendation converts ensemble score to recommendation and reasoning
+// it converts ensemble score to recommendation and reasoning
 func MapScoreToRecommendation(ensembleScore float64) (recommendation, reasoning string) {
 	if ensembleScore >= BuyThreshold {
 		return RecommendationBuy, "Strong buy signals"

@@ -10,9 +10,9 @@ import (
 
 	"github.com/alpacahq/alpaca-trade-api-go/v3/alpaca"
 
-	datafeed "github.com/fazecat/mongelmaker/Internal/database"
-	"github.com/fazecat/mongelmaker/Internal/strategy"
-	"github.com/fazecat/mongelmaker/Internal/utils/config"
+	datafeed "github.com/fazecat/mogulmaker/Internal/database"
+	"github.com/fazecat/mogulmaker/Internal/strategy"
+	"github.com/fazecat/mogulmaker/Internal/utils/config"
 )
 
 // displays detected signals and lets user execute trades

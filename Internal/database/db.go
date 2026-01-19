@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"os"
 
-	database "github.com/fazecat/mongelmaker/Internal/database/sqlc"
+	database "github.com/fazecat/mogulmaker/Internal/database/sqlc"
 	_ "github.com/lib/pq"
 )
 

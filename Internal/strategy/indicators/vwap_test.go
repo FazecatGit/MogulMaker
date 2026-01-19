@@ -3,7 +3,7 @@ package indicators
 import (
 	"testing"
 
-	"github.com/fazecat/mongelmaker/Internal/types"
+	"github.com/fazecat/mogulmaker/Internal/types"
 )
 
 func TestVWAPCalculation(t *testing.T) {

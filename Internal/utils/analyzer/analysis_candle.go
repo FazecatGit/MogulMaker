@@ -3,7 +3,7 @@ package analyzer
 import (
 	"math"
 
-	"github.com/fazecat/mongelmaker/Internal/types"
+	"github.com/fazecat/mogulmaker/Internal/types"
 )
 
 type Candlestick struct {

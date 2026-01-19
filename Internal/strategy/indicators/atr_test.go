@@ -3,7 +3,7 @@ package indicators
 import (
 	"testing"
 
-	"github.com/fazecat/mongelmaker/Internal/utils"
+	"github.com/fazecat/mogulmaker/Internal/utils"
 )
 
 func TestCalculateATR(t *testing.T) {

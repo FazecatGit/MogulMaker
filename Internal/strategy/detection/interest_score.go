@@ -1,9 +1,9 @@
 package detection
 
 import (
-	"github.com/fazecat/mongelmaker/Internal/types"
-	"github.com/fazecat/mongelmaker/Internal/utils"
-	"github.com/fazecat/mongelmaker/Internal/utils/config"
+	"github.com/fazecat/mogulmaker/Internal/types"
+	"github.com/fazecat/mogulmaker/Internal/utils"
+	"github.com/fazecat/mogulmaker/Internal/utils/config"
 )
 
 func CalculateInterestScore(input types.ScoringInput, weights config.SignalWeights) float64 {

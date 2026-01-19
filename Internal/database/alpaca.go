@@ -9,8 +9,8 @@ import (
 	"time"
 
 	"github.com/alpacahq/alpaca-trade-api-go/v3/alpaca"
-	"github.com/fazecat/mongelmaker/Internal/types"
-	"github.com/fazecat/mongelmaker/Internal/utils"
+	"github.com/fazecat/mogulmaker/Internal/types"
+	"github.com/fazecat/mogulmaker/Internal/utils"
 )
 
 type Bar = types.Bar

@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/fazecat/mongelmaker/Internal/utils/config"
+	"github.com/fazecat/mogulmaker/Internal/utils/config"
 )
 
 // Create config once for all tests

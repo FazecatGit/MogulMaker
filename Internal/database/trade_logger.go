@@ -9,7 +9,7 @@ import (
 
 	"github.com/shopspring/decimal"
 
-	database "github.com/fazecat/mongelmaker/Internal/database/sqlc"
+	database "github.com/fazecat/mogulmaker/Internal/database/sqlc"
 )
 
 func LogTradeExecution(ctx context.Context, symbol string, side string, quantity int64, price decimal.Decimal, alpacaOrderID string, status string) error {

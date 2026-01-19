@@ -1,6 +1,6 @@
 package indicators
 
-import "github.com/fazecat/mongelmaker/Internal/types"
+import "github.com/fazecat/mogulmaker/Internal/types"
 
 type PriceLevel struct {
 	Price      float64

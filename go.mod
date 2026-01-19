@@ -1,4 +1,4 @@
-module github.com/fazecat/mongelmaker
+module github.com/fazecat/mogulmaker
 
 go 1.23
 

@@ -3,7 +3,7 @@ package detection
 import (
 	"testing"
 
-	"github.com/fazecat/mongelmaker/Internal/types"
+	"github.com/fazecat/mogulmaker/Internal/types"
 )
 
 func TestDivergenceDetector_DetectRSIDivergence_Bullish(t *testing.T) {

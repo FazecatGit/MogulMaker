@@ -4,11 +4,11 @@ import (
 	"context"
 	"fmt"
 
-	datafeed "github.com/fazecat/mongelmaker/Internal/database"
-	"github.com/fazecat/mongelmaker/Internal/strategy/detection"
-	"github.com/fazecat/mongelmaker/Internal/strategy/indicators"
-	"github.com/fazecat/mongelmaker/Internal/types"
-	"github.com/fazecat/mongelmaker/Internal/utils/config"
+	datafeed "github.com/fazecat/mogulmaker/Internal/database"
+	"github.com/fazecat/mogulmaker/Internal/strategy/detection"
+	"github.com/fazecat/mogulmaker/Internal/strategy/indicators"
+	"github.com/fazecat/mogulmaker/Internal/types"
+	"github.com/fazecat/mogulmaker/Internal/utils/config"
 )
 
 func extractClosingPrices(bars []types.Bar) []float64 {

@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"math"
 
-	"github.com/fazecat/mongelmaker/Internal/types"
+	"github.com/fazecat/mogulmaker/Internal/types"
 )
 
 // defines the type of detected pattern

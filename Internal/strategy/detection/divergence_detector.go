@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"math"
 
-	"github.com/fazecat/mongelmaker/Internal/types"
+	"github.com/fazecat/mogulmaker/Internal/types"
 )
 
 // This defines the type of divergence detected

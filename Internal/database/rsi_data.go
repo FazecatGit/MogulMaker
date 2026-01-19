@@ -6,9 +6,9 @@ import (
 	"strconv"
 	"time"
 
-	database "github.com/fazecat/mongelmaker/Internal/database/sqlc"
-	"github.com/fazecat/mongelmaker/Internal/types"
-	"github.com/fazecat/mongelmaker/Internal/utils"
+	database "github.com/fazecat/mogulmaker/Internal/database/sqlc"
+	"github.com/fazecat/mogulmaker/Internal/types"
+	"github.com/fazecat/mogulmaker/Internal/utils"
 )
 
 type PricePoint struct {

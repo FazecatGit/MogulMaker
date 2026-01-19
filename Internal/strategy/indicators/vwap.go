@@ -3,7 +3,7 @@ package indicators
 import (
 	"fmt"
 
-	"github.com/fazecat/mongelmaker/Internal/types"
+	"github.com/fazecat/mogulmaker/Internal/types"
 )
 
 // computes Volume Weighted Average Price

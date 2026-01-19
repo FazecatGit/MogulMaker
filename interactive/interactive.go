@@ -5,17 +5,17 @@ import (
 	"fmt"
 	"time"
 
-	datafeed "github.com/fazecat/mongelmaker/Internal/database"
-	sqlc "github.com/fazecat/mongelmaker/Internal/database/sqlc"
-	"github.com/fazecat/mongelmaker/Internal/export"
-	newsscraping "github.com/fazecat/mongelmaker/Internal/news_scraping"
-	"github.com/fazecat/mongelmaker/Internal/strategy"
-	"github.com/fazecat/mongelmaker/Internal/strategy/indicators"
-	"github.com/fazecat/mongelmaker/Internal/strategy/signals"
-	"github.com/fazecat/mongelmaker/Internal/types"
-	"github.com/fazecat/mongelmaker/Internal/utils"
-	"github.com/fazecat/mongelmaker/Internal/utils/analyzer"
-	"github.com/fazecat/mongelmaker/Internal/utils/scoring"
+	datafeed "github.com/fazecat/mogulmaker/Internal/database"
+	sqlc "github.com/fazecat/mogulmaker/Internal/database/sqlc"
+	"github.com/fazecat/mogulmaker/Internal/export"
+	newsscraping "github.com/fazecat/mogulmaker/Internal/news_scraping"
+	"github.com/fazecat/mogulmaker/Internal/strategy"
+	"github.com/fazecat/mogulmaker/Internal/strategy/indicators"
+	"github.com/fazecat/mogulmaker/Internal/strategy/signals"
+	"github.com/fazecat/mogulmaker/Internal/types"
+	"github.com/fazecat/mogulmaker/Internal/utils"
+	"github.com/fazecat/mogulmaker/Internal/utils/analyzer"
+	"github.com/fazecat/mogulmaker/Internal/utils/scoring"
 )
 
 func FetchMarketData(symbol string, timeframe string, limit int, startDate string) ([]datafeed.Bar, error) {
@@ -60,9 +60,7 @@ func FetchMarketDataWithType(symbol string, timeframe string, limit int, startDa
 	return bars, nil
 }
 
-// fetches data from multiple timeframes and combines signals
 func FetchMultiTimeframeSignals(symbol string, assetType string) (*signals.MultiTimeframeSignal, error) {
-	// Fetch data from 3 timeframes: Daily, 4H, 1H
 	dailyBars, err := datafeed.GetAlpacaBarsWithType(symbol, "1Day", 100, "", assetType)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch daily data: %w", err)
@@ -188,7 +186,7 @@ func PickStockFromResults(results []strategy.StockScore) (string, error) {
 }
 
 func DisplayBasicData(bars []datafeed.Bar, symbol string, timeframe string) {
-	fmt.Printf("\n📊 Basic Data for %s (%s)\n", symbol, timeframe)
+	fmt.Printf("\n[DATA] Basic Data for %s (%s)\n", symbol, timeframe)
 	fmt.Println("Timestamp           | Close Price | Volume")
 	fmt.Println("--------------------|-------------|----------")
 
@@ -199,7 +197,7 @@ func DisplayBasicData(bars []datafeed.Bar, symbol string, timeframe string) {
 }
 
 func DisplayAdvancedData(bars []datafeed.Bar, symbol string, timeframe string) {
-	fmt.Printf("\n📊 Advanced Data for %s (%s)\n", symbol, timeframe)
+	fmt.Printf("\n[DATA] Advanced Data for %s (%s)\n", symbol, timeframe)
 	fmt.Println("Timestamp           | Open Price | High Price | Low Price | Close Price | Volume")
 	fmt.Println("--------------------|------------|------------|-----------|-------------|----------")
 
@@ -210,7 +208,7 @@ func DisplayAdvancedData(bars []datafeed.Bar, symbol string, timeframe string) {
 }
 
 func DisplayAnalyticsData(bars []datafeed.Bar, symbol string, timeframe string, tz *time.Location, queries *sqlc.Queries, newsStorage *newsscraping.NewsStorage) {
-	fmt.Printf("\n📈 Analytics Data for %s (%s) - Timezone: %s\n", symbol, timeframe, tz.String())
+	fmt.Printf("\n[ANALYTICS] Analytics Data for %s (%s) - Timezone: %s\n", symbol, timeframe, tz.String())
 
 	// Display news first if available
 	if newsStorage != nil {
@@ -274,7 +272,7 @@ func DisplayAnalyticsData(bars []datafeed.Bar, symbol string, timeframe string, 
 	// Calculate ATR from bars if not in database
 	if len(atrMap) == 0 && len(bars) >= 14 {
 		atrValue := scoring.CalculateATRFromBars(bars)
-		// Store same ATR for all recent bars (ATR is calculated for the full period)
+		// Store same ATR for all recent bars
 		for _, bar := range bars {
 			t, _ := time.Parse(time.RFC3339, bar.Timestamp)
 			timestampStr := t.Format("2006-01-02 15:04:05")
@@ -352,25 +350,25 @@ func DisplayAnalyticsData(bars []datafeed.Bar, symbol string, timeframe string, 
 			rsiSignal := indicators.DetermineRSISignal(rsiVal)
 			switch rsiSignal {
 			case "overbought":
-				signalStr += "📈 Overbought"
+				signalStr += "[OVERBOUGHT] RSI High"
 			case "oversold":
-				signalStr += "📉 Oversold"
+				signalStr += "[OVERSOLD] RSI Low"
 			case "neutral":
-				signalStr += "➡️  Neutral"
+				signalStr += "[NEUTRAL] RSI Mid"
 			}
 		} else {
 
 			analysis := results["Analysis"]
 			if analysis == "Strong Bullish" || analysis == "Bullish" {
-				signalStr += "📈 Bullish Signal"
+				signalStr += "[BULLISH] Signal"
 			} else if analysis == "Strong Bearish" || analysis == "Bearish" {
-				signalStr += "📉 Bearish Signal"
+				signalStr += "[BEARISH] Signal"
 			} else if analysis == "Doji (indecision)" {
-				signalStr += "➡️  Wait Signal"
+				signalStr += "[WAIT] Indecision"
 			} else if analysis == "Bullish Rejection" {
-				signalStr += "📈 Reversal Setup"
+				signalStr += "[REVERSAL+] Bullish Setup"
 			} else if analysis == "Bearish Rejection" {
-				signalStr += "📉 Reversal Setup"
+				signalStr += "[REVERSAL-] Bearish Setup"
 			}
 		}
 
@@ -414,16 +412,12 @@ func DisplayAnalyticsData(bars []datafeed.Bar, symbol string, timeframe string, 
 			displayTimestamp, bar.Close, priceChange, priceChangePercent, bar.Volume, rsiStr, atrStr, bodyToUpperStr, bodyToLowerStr, analysisStr, signalStr)
 	}
 
-	// Display final signal recommendation (before whale events)
 	displayFinalSignal(bars, symbol, latestAnalysis, latestRSI, latestATR, "stock")
 
-	// Display whale events if database available
 	if queries != nil {
 		fmt.Println()
 		displayWhaleEventsInline(symbol, queries)
 	}
-
-	// Display support/resistance levels
 	displaySupportResistance(bars)
 }
 
@@ -449,50 +443,67 @@ func displayFinalSignal(bars []datafeed.Bar, symbol string, analysis string, rsi
 
 	// Display filtering results
 	if filteredResult.Passed {
-		fmt.Printf("🎯 FINAL RECOMMENDATION: %s \n", recommendationStr)
-		fmt.Printf("✅ Signal Quality: %.1f%% - %s\n", filteredResult.QualityScore, filteredResult.RecommendedAction)
+		fmt.Printf("[FINAL] RECOMMENDATION: %s \n", recommendationStr)
+		fmt.Printf("[PASS] Signal Quality: %.1f%% - %s\n", filteredResult.QualityScore, filteredResult.RecommendedAction)
 	} else {
-		fmt.Printf("⚠️  FILTERED SIGNAL: %s\n", recommendationStr)
-		fmt.Printf("❌ Quality Check Failed: %s\n", filteredResult.FailureReason)
+		fmt.Printf("[WARNING] FILTERED SIGNAL: %s\n", recommendationStr)
+		fmt.Printf("-X- Quality Check Failed: %s\n", filteredResult.FailureReason)
 		fmt.Printf("   Recommendation: %s\n", filteredResult.RecommendedAction)
 	}
 
 	fmt.Printf("Reason: %s\n", signal.Reasoning)
+	// S/R Validation
+	if tradeSignal != nil && len(bars) > 0 {
+		srValidator := signals.NewSupportResistanceValidator()
+		srValidator.MinValidationScore = 50.0
+		srValidation := srValidator.ValidateSignalWithSR(tradeSignal, bars, bars[0].Close)
+		if srValidation != nil {
+			fmt.Printf("\\n[S/R] Validation: Score %.0f/100", srValidation.ValidationScore)
+			if srValidation.IsValidLocation {
+				fmt.Print(" [VALID]\\n")
+			} else {
+				fmt.Print(" [WARNING]\\n")
+			}
+			fmt.Printf("   Support: $%.2f | Resistance: $%.2f | Current: $%.2f\\n",
+				srValidation.SupportLevel, srValidation.ResistanceLevel, srValidation.CurrentPrice)
+			fmt.Printf("   %s\\n", srValidation.DetailedAnalysis)
+			fmt.Printf("   %s\\n", srValidation.RecommendedAction)
+		}
+	}
 	fmt.Println("\nSignal Breakdown:")
 	for _, component := range signal.Components {
-		emoji := "🟢"
+		marker := "[+]"
 		if component.Score < 0 {
-			emoji = "🔴"
+			marker = "[-]"
 		}
 		fmt.Printf("  %s %-20s %+.1f (weight: %.0f%%)\n",
-			emoji,
+			marker,
 			component.Name,
 			component.Score,
 			component.Weight*100)
 	}
 
 	// Add Multi-Timeframe Analysis
-	fmt.Println()
 	fmt.Println("═══════════════════════════════════════════════════════════════════════════════════")
-	fmt.Println("📊 MULTI-TIMEFRAME ANALYSIS")
+	fmt.Println(" MULTI-TIMEFRAME ANALYSIS")
 	fmt.Println("═══════════════════════════════════════════════════════════════════════════════════")
 
 	multiSignal, err := FetchMultiTimeframeSignals(symbol, assetType)
 	if err != nil {
-		fmt.Printf("⚠️  Could not fetch multi-timeframe data: %v\n", err)
+		fmt.Printf("[WARNING] Could not fetch multi-timeframe data: %v\n", err)
 	} else {
 		// Display multi-timeframe analysis
 		fmt.Print(signals.FormatMultiTimeframeSignal(*multiSignal))
 
 		// Check if multi-timeframe confirms the signal
 		if multiSignal.IsMultiTimeframeConfirmed(true) {
-			fmt.Println("✅ STRONG CONFIRMATION: Multiple timeframes aligned!")
+			fmt.Println("[STRONG] CONFIRMATION: Multiple timeframes aligned!")
 			fmt.Println("   This signal has high probability of success.")
 		} else if multiSignal.IsMultiTimeframeConfirmed(false) {
-			fmt.Println("⚠️  MODERATE CONFIRMATION: Partial timeframe alignment.")
+			fmt.Println("[MODERATE] CONFIRMATION: Partial timeframe alignment.")
 			fmt.Println("   Consider waiting for stronger confirmation.")
 		} else {
-			fmt.Println("❌ NO CONFIRMATION: Timeframes are conflicting.")
+			fmt.Println("[NONE] NO CONFIRMATION: Timeframes are conflicting.")
 			fmt.Println("   High risk - consider skipping this trade.")
 		}
 	}
@@ -507,24 +518,24 @@ func displayWhaleEventsInline(symbol string, queries *sqlc.Queries) {
 	// Fetch recent whale events
 	whales, err := datafeed.GetRecentWhales(ctx, queries, symbol, 10)
 	if err != nil {
-		fmt.Printf("⚠️  Could not fetch whale events: %v\n", err)
+		fmt.Printf("[WARNING] Could not fetch whale events: %v\n", err)
 		return
 	}
 
 	if len(whales) == 0 {
-		fmt.Println("🐋 Whale Activity: No significant volume anomalies detected")
+		fmt.Println("[WHALE] Activity: No significant volume anomalies detected")
 		return
 	}
 
-	fmt.Println("🐋 WHALE ACTIVITY DETECTED:")
+	fmt.Println("[WHALE] ACTIVITY DETECTED:")
 	fmt.Println("═══════════════════════════════════════════════════════════════════════════════════")
 	fmt.Println("Timestamp            | Direction | Z-Score | Volume (M)  | Price    | Conviction")
 	fmt.Println("═══════════════════════════════════════════════════════════════════════════════════")
 
 	for _, whale := range whales {
-		emoji := "🟢"
+		dirMarker := "[BUY]"
 		if whale.Direction == "SELL" {
-			emoji = "🔴"
+			dirMarker = "[SELL]"
 		}
 
 		tsStr := "---"
@@ -536,14 +547,14 @@ func displayWhaleEventsInline(symbol string, queries *sqlc.Queries) {
 
 		convictionStr := whale.Conviction
 		if whale.Conviction == "HIGH" {
-			convictionStr = "🚨 HIGH"
+			convictionStr = "[!] HIGH"
 		} else if whale.Conviction == "MEDIUM" {
-			convictionStr = "⚠️  MEDIUM"
+			convictionStr = "[~] MEDIUM"
 		}
 
 		fmt.Printf("%s | %s %-7s | %7s | %10.1f | %8s | %s\n",
 			tsStr,
-			emoji,
+			dirMarker,
 			whale.Direction,
 			whale.ZScore,
 			volM,
@@ -578,17 +589,17 @@ func displaySupportResistance(bars []datafeed.Bar) {
 	fmt.Printf("Current Price:  $%.2f\n", currentPrice)
 	fmt.Printf("Support Level:  $%.2f (%.2f%% below)  ", support, distanceToSupport)
 	if isAtSupportLevel {
-		fmt.Printf("🟢 AT SUPPORT - BUYING OPPORTUNITY")
+		fmt.Printf("[BUY] AT SUPPORT - BUYING OPPORTUNITY")
 	} else if isBreakoutDown {
-		fmt.Printf("🔴 BROKEN SUPPORT - POSSIBLE SELL")
+		fmt.Printf("[SELL] BROKEN SUPPORT - POSSIBLE SELL")
 	}
 	fmt.Println()
 
 	fmt.Printf("Resistance:     $%.2f (%.2f%% above)  ", resistance, distanceToResistance)
 	if isAtResistanceLevel {
-		fmt.Printf("🔴 AT RESISTANCE - SELLING PRESSURE")
+		fmt.Printf("[SELL] AT RESISTANCE - SELLING PRESSURE")
 	} else if isBreakoutUp {
-		fmt.Printf("🟢 ABOVE RESISTANCE - BREAKOUT!")
+		fmt.Printf("[BUY] ABOVE RESISTANCE - BREAKOUT!")
 	}
 	fmt.Println()
 
@@ -847,12 +858,12 @@ func PrepareExportData(bars []datafeed.Bar, symbol string, timezone *time.Locati
 
 func DisplayVWAPAnalysis(bars []datafeed.Bar, symbol string, timeframe string) {
 	if len(bars) == 0 {
-		fmt.Printf("⚠️  No data available for %s\n", symbol)
+		fmt.Printf(" No data available for %s\n", symbol)
 		return
 	}
 
 	if len(bars) < 3 {
-		fmt.Printf("⚠️  Need at least 3 bars for complete vWAP analysis\n")
+		fmt.Printf(" Need at least 3 bars for complete vWAP analysis\n")
 		return
 	}
 
@@ -864,16 +875,16 @@ func DisplayVWAPAnalysis(bars []datafeed.Bar, symbol string, timeframe string) {
 	vwapCalc := indicators.NewVWAPCalculator(typesBars)
 	analysis := vwapCalc.AnalyzeVWAP(1.0)
 
-	fmt.Printf("\n💰 vWAP (Volume Weighted Average Price) Analysis for %s (%s)\n", symbol, timeframe)
+	fmt.Printf("\n vWAP (Volume Weighted Average Price) Analysis for %s (%s)\n", symbol, timeframe)
 	fmt.Println("==========================================")
 	fmt.Println()
 
-	fmt.Println("📊 QUICK SUMMARY:")
+	fmt.Println("QUICK SUMMARY:")
 	for key, value := range analysis {
 		fmt.Printf("  %-18s: %v\n", key, value)
 	}
 
-	fmt.Println("\n📈 vWAP DETAILS:")
+	fmt.Println("\n vWAP DETAILS:")
 	allVWAPValues := vwapCalc.CalculateAllValues()
 	if len(allVWAPValues) > 0 {
 		fmt.Printf("  Min vWAP: %.2f\n", utils.Min(allVWAPValues...))
@@ -881,7 +892,7 @@ func DisplayVWAPAnalysis(bars []datafeed.Bar, symbol string, timeframe string) {
 		fmt.Printf("  Current vWAP: %.2f\n", vwapCalc.Calculate())
 	}
 
-	fmt.Println("\n📊 vWAP BY BAR:")
+	fmt.Println("\n vWAP BY BAR:")
 	fmt.Println("Timestamp           | Close Price | vWAP       | Distance % | Trend")
 	fmt.Println("--------------------|-------------|------------|------------|---------")
 
@@ -891,70 +902,69 @@ func DisplayVWAPAnalysis(bars []datafeed.Bar, symbol string, timeframe string) {
 		trend := "---"
 
 		if bar.Close > vwap {
-			trend = "📈 Above"
+			trend = "Above"
 		} else if bar.Close < vwap {
-			trend = "📉 Below"
+			trend = "Below"
 		} else {
-			trend = "➡️  At"
+			trend = "Neutral"
 		}
 
 		fmt.Printf("%-20s | %11.2f | %10.2f | %10.2f | %s\n",
 			bar.Timestamp, bar.Close, vwap, distance, trend)
 	}
 
-	fmt.Println("\n🎯 SUPPORT/RESISTANCE LEVELS:")
+	fmt.Println("\n SUPPORT/RESISTANCE LEVELS:")
 	currentVWAP := vwapCalc.Calculate()
 	isSupport := vwapCalc.IsVWAPSupport(1.0)
 	isResistance := vwapCalc.IsVWAPResistance(1.0)
 
 	if isSupport {
-		fmt.Println("  ✅ vWAP is acting as SUPPORT")
+		fmt.Println("   vWAP is acting as SUPPORT")
 		fmt.Println("     → Price touched vWAP from above")
 		fmt.Println("     → Look for bounce UP")
 	} else if isResistance {
-		fmt.Println("  ✅ vWAP is acting as RESISTANCE")
+		fmt.Println("   vWAP is acting as RESISTANCE")
 		fmt.Println("     → Price touched vWAP from below")
 		fmt.Println("     → Look for bounce DOWN")
 	} else {
-		fmt.Println("  ⚠️  vWAP is neither support nor resistance (no recent contact)")
+		fmt.Println("   vWAP is neither support nor resistance (no recent contact)")
 	}
 
-	fmt.Println("\n🔄 BOUNCE DETECTION:")
+	fmt.Println("\n BOUNCE DETECTION:")
 	isBounce, bounceType := vwapCalc.GetVWAPBounce(1.0)
 
 	if isBounce {
-		fmt.Printf("  ✅ BOUNCE DETECTED: %s\n", bounceType)
+		fmt.Printf("  BOUNCE DETECTED: %s\n", bounceType)
 		if bounceType == "bullish_bounce" {
 			fmt.Println("     → Price bounced UP from vWAP")
-			fmt.Println("     → Potential BUY signal 🟢")
+			fmt.Println("     → Potential BUY signal")
 		} else if bounceType == "bearish_bounce" {
 			fmt.Println("     → Price bounced DOWN from vWAP")
-			fmt.Println("     → Potential SELL signal 🔴")
+			fmt.Println("     → Potential SELL signal")
 		}
 	} else {
-		fmt.Println("  ⚠️  No bounce detected in last 3 bars")
+		fmt.Println("  [WARNING] No bounce detected in last 3 bars")
 	}
 
-	fmt.Println("\n📉 CURRENT TREND:")
+	fmt.Println("\n CURRENT TREND:")
 	trend := vwapCalc.GetVWAPTrend()
 	switch trend {
 	case 1:
-		fmt.Println("  📈 Price is ABOVE vWAP (Bullish)")
+		fmt.Println("  Price is ABOVE vWAP (Bullish)")
 		fmt.Println("     → Uptrend favors buyers")
 		fmt.Printf("     → Support level: vWAP at %.2f\n", currentVWAP)
 	case -1:
-		fmt.Println("  📉 Price is BELOW vWAP (Bearish)")
+		fmt.Println("  Price is BELOW vWAP (Bearish)")
 		fmt.Println("     → Downtrend favors sellers")
 		fmt.Printf("     → Resistance level: vWAP at %.2f\n", currentVWAP)
 	default:
-		fmt.Println("  ➡️  Price is AT vWAP (Neutral)")
+		fmt.Println("  Price is AT vWAP (Neutral)")
 		fmt.Println("     → Potential decision point")
 	}
 
 	fmt.Println("\n==========================================")
 }
 
-// displayNewsForSymbol fetches and displays recent news articles
 func displayNewsForSymbol(symbol string, newsStorage *newsscraping.NewsStorage) {
 	ctx := context.Background()
 	articles, err := newsStorage.GetLatestNews(ctx, symbol, 5)
@@ -964,23 +974,8 @@ func displayNewsForSymbol(symbol string, newsStorage *newsscraping.NewsStorage) 
 
 	fmt.Println()
 	fmt.Println("═══════════════════════════════════════════════════════════════════════════════════")
-	fmt.Printf("📰 LATEST NEWS FOR %s\n", symbol)
+	fmt.Printf(" LATEST NEWS FOR %s\n", symbol)
 	fmt.Println("═══════════════════════════════════════════════════════════════════════════════════")
-
-	for i, article := range articles {
-		sentimentEmoji := "⚪"
-		if article.Sentiment == newsscraping.Positive {
-			sentimentEmoji = "🟢"
-		} else if article.Sentiment == newsscraping.Negative {
-			sentimentEmoji = "🔴"
-		}
-
-		fmt.Printf("\n%d. %s %s\n", i+1, sentimentEmoji, article.Headline)
-		fmt.Printf("   Source: %s | Published: %s\n", article.Source, article.PublishedAt.Format("Jan 02, 2006 15:04"))
-		if article.URL != "" {
-			fmt.Printf("   URL: %s\n", article.URL)
-		}
-	}
 
 	fmt.Println("═══════════════════════════════════════════════════════════════════════════════════")
 }

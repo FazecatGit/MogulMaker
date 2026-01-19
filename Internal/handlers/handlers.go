@@ -12,18 +12,18 @@ import (
 	"time"
 
 	"github.com/alpacahq/alpaca-trade-api-go/v3/alpaca"
-	datafeed "github.com/fazecat/mongelmaker/Internal/database"
-	database "github.com/fazecat/mongelmaker/Internal/database/sqlc"
-	"github.com/fazecat/mongelmaker/Internal/database/watchlist"
-	"github.com/fazecat/mongelmaker/Internal/handlers/risk"
-	newsscraping "github.com/fazecat/mongelmaker/Internal/news_scraping"
-	"github.com/fazecat/mongelmaker/Internal/strategy"
-	positionPkg "github.com/fazecat/mongelmaker/Internal/strategy/position"
-	"github.com/fazecat/mongelmaker/Internal/types"
-	"github.com/fazecat/mongelmaker/Internal/utils/config"
-	"github.com/fazecat/mongelmaker/Internal/utils/scanner"
-	"github.com/fazecat/mongelmaker/Internal/utils/scoring"
-	"github.com/fazecat/mongelmaker/interactive"
+	datafeed "github.com/fazecat/mogulmaker/Internal/database"
+	database "github.com/fazecat/mogulmaker/Internal/database/sqlc"
+	"github.com/fazecat/mogulmaker/Internal/database/watchlist"
+	"github.com/fazecat/mogulmaker/Internal/handlers/risk"
+	newsscraping "github.com/fazecat/mogulmaker/Internal/news_scraping"
+	"github.com/fazecat/mogulmaker/Internal/strategy"
+	positionPkg "github.com/fazecat/mogulmaker/Internal/strategy/position"
+	"github.com/fazecat/mogulmaker/Internal/types"
+	"github.com/fazecat/mogulmaker/Internal/utils/config"
+	"github.com/fazecat/mogulmaker/Internal/utils/scanner"
+	"github.com/fazecat/mogulmaker/Internal/utils/scoring"
+	"github.com/fazecat/mogulmaker/interactive"
 	"github.com/shopspring/decimal"
 )
 
@@ -309,6 +309,22 @@ func HandleScreener(ctx context.Context, cfg *config.Config, q *database.Queries
 	if selectedStock.ShortSignal != nil {
 		fmt.Printf("\n📉 SHORT Signal: %s (Confidence: %.1f%%)\n", selectedStock.ShortSignal.Direction, selectedStock.ShortSignal.Confidence)
 		fmt.Printf("   Reason: %s\n", selectedStock.ShortSignal.Reasoning)
+	}
+
+	// Display S/R validation
+	if selectedStock.SRValidation != nil {
+		fmt.Printf("\n📍 S/R Analysis: Score %.0f/100", selectedStock.SRValidation.ValidationScore)
+		if selectedStock.SRValidation.IsValidLocation {
+			fmt.Print(" ✅")
+		} else {
+			fmt.Print(" ⚠️")
+		}
+		fmt.Printf("\n   Support: $%.2f | Resistance: $%.2f | Current: $%.2f\n",
+			selectedStock.SRValidation.SupportLevel,
+			selectedStock.SRValidation.ResistanceLevel,
+			selectedStock.SRValidation.CurrentPrice)
+		fmt.Printf("   %s\n", selectedStock.SRValidation.DetailedAnalysis)
+		fmt.Printf("   %s\n", selectedStock.SRValidation.RecommendedAction)
 	}
 
 	if selectedStock.ATR != nil {

@@ -9,13 +9,14 @@ import (
 
 	"github.com/alpacahq/alpaca-trade-api-go/v3/alpaca"
 
-	datafeed "github.com/fazecat/mongelmaker/Internal/database"
-	. "github.com/fazecat/mongelmaker/Internal/news_scraping"
-	"github.com/fazecat/mongelmaker/Internal/strategy/detection"
-	"github.com/fazecat/mongelmaker/Internal/strategy/indicators"
-	signalsPkg "github.com/fazecat/mongelmaker/Internal/strategy/signals"
-	"github.com/fazecat/mongelmaker/Internal/utils"
-	"github.com/fazecat/mongelmaker/Internal/utils/config"
+	datafeed "github.com/fazecat/mogulmaker/Internal/database"
+	. "github.com/fazecat/mogulmaker/Internal/news_scraping"
+	"github.com/fazecat/mogulmaker/Internal/strategy/detection"
+	"github.com/fazecat/mogulmaker/Internal/strategy/indicators"
+	signalsPkg "github.com/fazecat/mogulmaker/Internal/strategy/signals"
+	"github.com/fazecat/mogulmaker/Internal/types"
+	"github.com/fazecat/mogulmaker/Internal/utils"
+	"github.com/fazecat/mogulmaker/Internal/utils/config"
 )
 
 type ScreenerCriteria struct {
@@ -37,6 +38,7 @@ type StockScore struct {
 	Recommendation string
 	LongSignal     *TradeSignal
 	ShortSignal    *TradeSignal
+	SRValidation   *signalsPkg.SignalValidationWithSR // S/R analysis
 }
 
 func DefaultScreenerCriteria() ScreenerCriteria {
@@ -57,7 +59,7 @@ func ScreenStocksWithType(symbols []string, timeframe string, numBars int, crite
 	var results []StockScore
 
 	for _, symbol := range symbols {
-		score, signals, rsi, atr, longSignal, shortSignal, err := scoreStockWithType(symbol, timeframe, numBars, criteria, newsStorage, assetType)
+		score, signals, rsi, atr, longSignal, shortSignal, srValidation, err := scoreStockWithType(symbol, timeframe, numBars, criteria, newsStorage, assetType)
 		if err != nil {
 			log.Printf("Error screening %s: %v", symbol, err)
 			continue
@@ -67,13 +69,14 @@ func ScreenStocksWithType(symbols []string, timeframe string, numBars int, crite
 			continue
 		}
 		results = append(results, StockScore{
-			Symbol:      symbol,
-			Score:       score,
-			Signals:     signals,
-			RSI:         rsi,
-			ATR:         atr,
-			LongSignal:  longSignal,
-			ShortSignal: shortSignal,
+			Symbol:       symbol,
+			Score:        score,
+			Signals:      signals,
+			RSI:          rsi,
+			ATR:          atr,
+			LongSignal:   longSignal,
+			ShortSignal:  shortSignal,
+			SRValidation: srValidation,
 		})
 	}
 	sort.Slice(results, func(i, j int) bool {
@@ -83,19 +86,19 @@ func ScreenStocksWithType(symbols []string, timeframe string, numBars int, crite
 	return results, nil
 }
 
-func scoreStock(symbol, timeframe string, numBars int, criteria ScreenerCriteria, newsStorage *NewsStorage) (score float64, signals []string, rsi, atr *float64, longSignal, shortSignal *TradeSignal, err error) {
+func scoreStock(symbol, timeframe string, numBars int, criteria ScreenerCriteria, newsStorage *NewsStorage) (score float64, signals []string, rsi, atr *float64, longSignal, shortSignal *TradeSignal, srValidation *signalsPkg.SignalValidationWithSR, err error) {
 	return scoreStockWithType(symbol, timeframe, numBars, criteria, newsStorage, "stock")
 }
 
-func scoreStockWithType(symbol, timeframe string, numBars int, criteria ScreenerCriteria, newsStorage *NewsStorage, assetType string) (score float64, signals []string, rsi, atr *float64, longSignal, shortSignal *TradeSignal, err error) {
+func scoreStockWithType(symbol, timeframe string, numBars int, criteria ScreenerCriteria, newsStorage *NewsStorage, assetType string) (score float64, signals []string, rsi, atr *float64, longSignal, shortSignal *TradeSignal, srValidation *signalsPkg.SignalValidationWithSR, err error) {
 
 	bars, err := datafeed.GetAlpacaBarsWithType(symbol, timeframe, numBars, "", assetType)
 	if err != nil {
-		return 0, nil, nil, nil, nil, nil, err
+		return 0, nil, nil, nil, nil, nil, nil, err
 	}
 
 	if len(bars) < 2 {
-		return 0, nil, nil, nil, nil, nil, fmt.Errorf("insufficient data for %s (need 2 bars, got %d)", symbol, len(bars))
+		return 0, nil, nil, nil, nil, nil, nil, fmt.Errorf("insufficient data for %s (need 2 bars, got %d)", symbol, len(bars))
 	}
 
 	startTime := time.Now().AddDate(0, 0, -180)
@@ -198,11 +201,11 @@ func scoreStockWithType(symbol, timeframe string, numBars int, criteria Screener
 	filteredResult := filter.FilterSignal(tradeSignal)
 
 	if filteredResult.Passed {
-		signals = append(signals, fmt.Sprintf("\n🎯 FINAL: %s [Quality: %.1f%% ✓]",
+		signals = append(signals, fmt.Sprintf("\n[FINAL] %s [Quality: %.1f%% ✓]",
 			signalsPkg.FormatSignal(combinedSignal), filteredResult.QualityScore))
 		score += 10 // Bonus for high-quality signal
 	} else {
-		signals = append(signals, fmt.Sprintf("\n⚠️  SIGNAL FILTERED: %s (Reason: %s)",
+		signals = append(signals, fmt.Sprintf("\n[WARNING] SIGNAL FILTERED: %s (Reason: %s)",
 			signalsPkg.FormatSignal(combinedSignal), filteredResult.FailureReason))
 		score -= 5 // Penalty for low-quality signal
 	}
@@ -210,7 +213,40 @@ func scoreStockWithType(symbol, timeframe string, numBars int, criteria Screener
 	longSignal = AnalyzeForLongs(latestBar, rsi, atr, criteria)
 	shortSignal = AnalyzeForShorts(latestBar, rsi, atr, criteria)
 
-	return score, signals, rsi, atr, longSignal, shortSignal, nil
+	// Perform S/R validation on the best signal
+	var signalToValidate *TradeSignal
+	if longSignal != nil && (shortSignal == nil || longSignal.Confidence >= shortSignal.Confidence) {
+		signalToValidate = longSignal
+	} else if shortSignal != nil {
+		signalToValidate = shortSignal
+	}
+
+	if signalToValidate != nil {
+		// Convert TradeSignal to types.TradeSignal for validation
+		typesSignal := &types.TradeSignal{
+			Direction:  signalToValidate.Direction,
+			Confidence: signalToValidate.Confidence,
+			Reasoning:  signalToValidate.Reasoning,
+		}
+
+		// Create S/R validator
+		srValidator := signalsPkg.NewSupportResistanceValidator()
+		srValidator.MinValidationScore = 50.0
+
+		// Validate signal with S/R levels
+		srValidation = srValidator.ValidateSignalWithSR(typesSignal, bars, currentPrice)
+
+		// Adjust score based on S/R validation
+		if srValidation.IsValidLocation {
+			score += (srValidation.ValidationScore / 10.0) // Add up to 10 points for perfect S/R
+			signals = append(signals, fmt.Sprintf("[VALID] S/R: %.0f%% - %s", srValidation.ValidationScore, srValidation.DetailedAnalysis))
+		} else {
+			score -= 5 // Penalty for poor S/R positioning
+			signals = append(signals, fmt.Sprintf("[WARNING] S/R: %.0f%% - %s", srValidation.ValidationScore, srValidation.DetailedAnalysis))
+		}
+	}
+
+	return score, signals, rsi, atr, longSignal, shortSignal, srValidation, nil
 }
 
 func GetTradableAssets() ([]string, error) {

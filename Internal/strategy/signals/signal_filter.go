@@ -3,7 +3,7 @@ package signals
 import (
 	"fmt"
 
-	"github.com/fazecat/mongelmaker/Internal/types"
+	"github.com/fazecat/mogulmaker/Internal/types"
 )
 
 // Reduce false signals by filtering low-confidence signals

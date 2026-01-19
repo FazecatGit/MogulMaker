@@ -3,7 +3,7 @@ package detection
 import (
 	"testing"
 
-	"github.com/fazecat/mongelmaker/Internal/types"
+	"github.com/fazecat/mogulmaker/Internal/types"
 )
 
 func TestPatternDetector_DetectDoubleBottom(t *testing.T) {

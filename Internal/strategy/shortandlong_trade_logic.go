@@ -8,7 +8,7 @@ import (
 	"github.com/alpacahq/alpaca-trade-api-go/v3/alpaca"
 	"github.com/shopspring/decimal"
 
-	datafeed "github.com/fazecat/mongelmaker/Internal/database"
+	datafeed "github.com/fazecat/mogulmaker/Internal/database"
 )
 
 type TradeSignal struct {

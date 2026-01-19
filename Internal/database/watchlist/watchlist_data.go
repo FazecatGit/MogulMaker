@@ -5,7 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 
-	database "github.com/fazecat/mongelmaker/Internal/database/sqlc"
+	database "github.com/fazecat/mogulmaker/Internal/database/sqlc"
 )
 
 func AddToWatchlist(ctx context.Context, q *database.Queries, symbol string, assetType string, score float64, reason string) (int32, error) {

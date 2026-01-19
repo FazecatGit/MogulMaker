@@ -6,15 +6,15 @@ import (
 	"fmt"
 	"time"
 
-	db "github.com/fazecat/mongelmaker/Internal/database"
-	database "github.com/fazecat/mongelmaker/Internal/database/sqlc"
-	"github.com/fazecat/mongelmaker/Internal/strategy"
-	"github.com/fazecat/mongelmaker/Internal/strategy/detection"
-	"github.com/fazecat/mongelmaker/Internal/strategy/indicators"
-	"github.com/fazecat/mongelmaker/Internal/types"
-	"github.com/fazecat/mongelmaker/Internal/utils/analyzer"
-	"github.com/fazecat/mongelmaker/Internal/utils/config"
-	"github.com/fazecat/mongelmaker/Internal/utils/scoring"
+	db "github.com/fazecat/mogulmaker/Internal/database"
+	database "github.com/fazecat/mogulmaker/Internal/database/sqlc"
+	"github.com/fazecat/mogulmaker/Internal/strategy"
+	"github.com/fazecat/mogulmaker/Internal/strategy/detection"
+	"github.com/fazecat/mogulmaker/Internal/strategy/indicators"
+	"github.com/fazecat/mogulmaker/Internal/types"
+	"github.com/fazecat/mogulmaker/Internal/utils/analyzer"
+	"github.com/fazecat/mogulmaker/Internal/utils/config"
+	"github.com/fazecat/mogulmaker/Internal/utils/scoring"
 )
 
 func ShouldScan(ctx context.Context, profileName string, cfg *config.Config, q *database.Queries) (bool, error) {

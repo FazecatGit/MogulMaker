@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/fazecat/mongelmaker/Internal/utils/config"
+	"github.com/fazecat/mogulmaker/Internal/utils/config"
 )
 
 func CheckMarketStatus(t time.Time, cfg *config.Config) (status string, isOpen bool) {

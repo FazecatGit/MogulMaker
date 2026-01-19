@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	newscraping "github.com/fazecat/mongelmaker/Internal/news_scraping"
+	newscraping "github.com/fazecat/mogulmaker/Internal/news_scraping"
 )
 
 func main() {

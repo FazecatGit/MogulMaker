@@ -5,7 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 
-	db "github.com/fazecat/mongelmaker/Internal/database/sqlc"
+	db "github.com/fazecat/mogulmaker/Internal/database/sqlc"
 )
 
 type NewsStorage struct {

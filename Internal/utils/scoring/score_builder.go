@@ -1,8 +1,8 @@
 package scoring
 
 import (
-	"github.com/fazecat/mongelmaker/Internal/types"
-	"github.com/fazecat/mongelmaker/Internal/utils"
+	"github.com/fazecat/mogulmaker/Internal/types"
+	"github.com/fazecat/mogulmaker/Internal/utils"
 )
 
 func BuildScoringInput(bars []types.Bar, vwapPrice float64, rsiValue float64, whaleCount int, atrValue float64, atrCategory string) (types.ScoringInput, error) {

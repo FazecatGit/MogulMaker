@@ -8,10 +8,10 @@ import (
 	"strings"
 	"time"
 
-	database "github.com/fazecat/mongelmaker/Internal/database/sqlc"
-	"github.com/fazecat/mongelmaker/Internal/handlers/risk"
-	"github.com/fazecat/mongelmaker/Internal/strategy/position"
-	"github.com/fazecat/mongelmaker/Internal/utils/formatting"
+	database "github.com/fazecat/mogulmaker/Internal/database/sqlc"
+	"github.com/fazecat/mogulmaker/Internal/handlers/risk"
+	"github.com/fazecat/mogulmaker/Internal/strategy/position"
+	"github.com/fazecat/mogulmaker/Internal/utils/formatting"
 )
 
 // P&L tracking, and analytics

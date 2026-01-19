@@ -3,7 +3,7 @@ package indicators
 import (
 	"testing"
 
-	datafeed "github.com/fazecat/mongelmaker/Internal/database"
+	datafeed "github.com/fazecat/mogulmaker/Internal/database"
 )
 
 func TestRSICalculation(t *testing.T) {

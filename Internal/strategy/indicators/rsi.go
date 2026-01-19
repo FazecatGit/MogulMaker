@@ -3,7 +3,7 @@ package indicators
 import (
 	"fmt"
 
-	"github.com/fazecat/mongelmaker/Internal/utils"
+	"github.com/fazecat/mogulmaker/Internal/utils"
 )
 
 func CalculateRSI(closes []float64, period int) ([]float64, error) {

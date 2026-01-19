@@ -5,7 +5,7 @@ import (
 	"database/sql"
 	"time"
 
-	sqlc "github.com/fazecat/mongelmaker/Internal/database/sqlc"
+	sqlc "github.com/fazecat/mogulmaker/Internal/database/sqlc"
 )
 
 type WhaleEventData struct {

@@ -8,8 +8,8 @@ import (
 	"time"
 
 	"github.com/alpacahq/alpaca-trade-api-go/v3/alpaca"
-	"github.com/fazecat/mongelmaker/Internal/strategy"
-	"github.com/fazecat/mongelmaker/Internal/types"
+	"github.com/fazecat/mogulmaker/Internal/strategy"
+	"github.com/fazecat/mogulmaker/Internal/types"
 )
 
 // tracks an active trade
