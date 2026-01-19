@@ -189,7 +189,23 @@ func scoreStockWithType(symbol, timeframe string, numBars int, criteria Screener
 
 	combinedSignal := signalsPkg.CalculateSignal(rsi, atr, bars, symbol, "")
 
-	signals = append(signals, fmt.Sprintf("\n🎯 FINAL: %s", signalsPkg.FormatSignal(combinedSignal)))
+	// Apply signal quality filtering
+	filter := signalsPkg.NewSignalQualityFilter()
+	filter.MinConfidenceThreshold = 65.0 // Require 65% confidence for screener
+	filter.VerboseLogging = false
+
+	tradeSignal := signalsPkg.ConvertToTradeSignal(combinedSignal)
+	filteredResult := filter.FilterSignal(tradeSignal)
+
+	if filteredResult.Passed {
+		signals = append(signals, fmt.Sprintf("\n🎯 FINAL: %s [Quality: %.1f%% ✓]",
+			signalsPkg.FormatSignal(combinedSignal), filteredResult.QualityScore))
+		score += 10 // Bonus for high-quality signal
+	} else {
+		signals = append(signals, fmt.Sprintf("\n⚠️  SIGNAL FILTERED: %s (Reason: %s)",
+			signalsPkg.FormatSignal(combinedSignal), filteredResult.FailureReason))
+		score -= 5 // Penalty for low-quality signal
+	}
 
 	longSignal = AnalyzeForLongs(latestBar, rsi, atr, criteria)
 	shortSignal = AnalyzeForShorts(latestBar, rsi, atr, criteria)

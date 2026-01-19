@@ -8,7 +8,31 @@ import (
 	"github.com/fazecat/mongelmaker/Internal/types"
 )
 
-// comment for future (adjust the values instead of hardcoding)
+// Default weights for signal components
+var DefaultSignalWeights = map[string]float64{
+	"RSI":                0.25,
+	"ATR":                0.15,
+	"Whale":              0.30,
+	"Pattern":            0.20,
+	"Support/Resistance": 0.10,
+}
+
+// Recommendation thresholds - single source of truth
+const (
+	BuyThreshold        = 1.5
+	AccumulateThreshold = 0.5
+	SellThreshold       = -1.5
+	DistributeThreshold = -0.5
+)
+
+// Recommendation constants
+const (
+	RecommendationBuy        = "BUY"
+	RecommendationAccumulate = "ACCUMULATE"
+	RecommendationWait       = "WAIT"
+	RecommendationDistribute = "DISTRIBUTE"
+	RecommendationSell       = "SELL"
+)
 
 type SignalComponent struct {
 	Name   string
@@ -63,12 +87,11 @@ func calculateATRScore(atr float64, closePrice float64) float64 {
 	return 0.0
 }
 
-// calculateWhaleScore determines whale signal from detected whale events
 func calculateWhaleScore(symbol string, bars []types.Bar) float64 {
 	whales := detection.DetectWhales(symbol, bars)
 
 	if len(whales) == 0 {
-		return 0.0 // No whales detected
+		return 0.0
 	}
 
 	buyCount := 0
@@ -122,6 +145,20 @@ func calculateSRScore(bars []types.Bar) float64 {
 	return 0.0
 }
 
+// MapScoreToRecommendation converts ensemble score to recommendation and reasoning
+func MapScoreToRecommendation(ensembleScore float64) (recommendation, reasoning string) {
+	if ensembleScore >= BuyThreshold {
+		return RecommendationBuy, "Strong buy signals"
+	} else if ensembleScore >= AccumulateThreshold {
+		return RecommendationAccumulate, "Moderate buy signals"
+	} else if ensembleScore <= SellThreshold {
+		return RecommendationSell, "Strong sell signals"
+	} else if ensembleScore <= DistributeThreshold {
+		return RecommendationDistribute, "Moderate sell signals"
+	}
+	return RecommendationWait, "Neutral signals"
+}
+
 func CalculateSignal(
 	rsiValue *float64,
 	atrValue *float64,
@@ -138,7 +175,7 @@ func CalculateSignal(
 		components = append(components, SignalComponent{
 			Name:   "RSI",
 			Score:  rsiScore,
-			Weight: 0.25,
+			Weight: DefaultSignalWeights["RSI"],
 		})
 	}
 
@@ -148,7 +185,7 @@ func CalculateSignal(
 		components = append(components, SignalComponent{
 			Name:   "ATR",
 			Score:  atrScore,
-			Weight: 0.15,
+			Weight: DefaultSignalWeights["ATR"],
 		})
 	}
 
@@ -156,47 +193,61 @@ func CalculateSignal(
 	components = append(components, SignalComponent{
 		Name:   "Whale",
 		Score:  whaleScore,
-		Weight: 0.30,
+		Weight: DefaultSignalWeights["Whale"],
 	})
 
 	patternScore := calculatePatternScore(analysis)
 	components = append(components, SignalComponent{
 		Name:   "Pattern",
 		Score:  patternScore,
-		Weight: 0.20,
+		Weight: DefaultSignalWeights["Pattern"],
 	})
 
 	srScore := calculateSRScore(bars)
 	components = append(components, SignalComponent{
 		Name:   "Support/Resistance",
 		Score:  srScore,
-		Weight: 0.10,
+		Weight: DefaultSignalWeights["Support/Resistance"],
 	})
 
-	// Calculate weighted ensemble score
-	ensembleScore := (rsiScore * 0.25) + (atrScore * 0.15) + (whaleScore * 0.30) + (patternScore * 0.20) + (srScore * 0.10)
+	// Calculate weighted ensemble score using centralized weights
+	ensembleScore := (rsiScore * DefaultSignalWeights["RSI"]) +
+		(atrScore * DefaultSignalWeights["ATR"]) +
+		(whaleScore * DefaultSignalWeights["Whale"]) +
+		(patternScore * DefaultSignalWeights["Pattern"]) +
+		(srScore * DefaultSignalWeights["Support/Resistance"])
 
-	// Map to recommendation
-	recommendation := "WAIT"
-	reasoning := "Neutral signals"
+	// Map to recommendation using centralized function
+	recommendation, reasoning := MapScoreToRecommendation(ensembleScore)
 
-	if ensembleScore >= 1.5 {
-		recommendation = "BUY"
-		reasoning = "Strong buy signals"
-	} else if ensembleScore >= 0.5 {
-		recommendation = "ACCUMULATE"
-		reasoning = "Moderate buy signals"
-	} else if ensembleScore <= -1.5 {
-		recommendation = "SELL"
-		reasoning = "Strong sell signals"
-	} else if ensembleScore <= -0.5 {
-		recommendation = "DISTRIBUTE"
-		reasoning = "Moderate sell signals"
+	// Calculate confidence based on recommendation tier
+	confidence := 50.0 // Default for WAIT
+	absScore := ensembleScore
+	if absScore < 0 {
+		absScore = -absScore
 	}
 
-	confidence := (ensembleScore / 3.0) * 100
-	if confidence < 0 {
-		confidence = -confidence
+	if recommendation == RecommendationBuy {
+		// BUY: ensembleScore >= 1.5 → 85-100% confidence
+		confidence = 85.0 + ((ensembleScore - BuyThreshold) / BuyThreshold * 15.0)
+		if confidence > 100 {
+			confidence = 100
+		}
+	} else if recommendation == RecommendationAccumulate {
+		// ACCUMULATE: 0.5-1.5 → 70-85% confidence
+		confidence = 70.0 + ((ensembleScore - AccumulateThreshold) / 1.0 * 15.0)
+	} else if recommendation == RecommendationSell {
+		// SELL: <= -1.5 → 85-100% confidence
+		confidence = 85.0 + ((absScore + SellThreshold) / (-SellThreshold) * 15.0)
+		if confidence > 100 {
+			confidence = 100
+		}
+	} else if recommendation == RecommendationDistribute {
+		// DISTRIBUTE: -0.5 to -1.5 → 70-85% confidence
+		confidence = 70.0 + ((absScore + DistributeThreshold) / 1.0 * 15.0)
+	} else {
+		// WAIT: -0.5 to 0.5 → confidence proportional to how close to thresholds
+		confidence = 50.0 + (absScore / (-DistributeThreshold) * 20.0)
 	}
 
 	return CombinedSignal{
@@ -205,6 +256,23 @@ func CalculateSignal(
 		Confidence:     confidence,
 		Reasoning:      reasoning,
 		Components:     components,
+	}
+}
+
+// ConvertToTradeSignal converts a CombinedSignal to a TradeSignal for filtering
+func ConvertToTradeSignal(combined CombinedSignal) *types.TradeSignal {
+	// Map recommendation to direction
+	direction := RecommendationWait
+	if combined.Recommendation == RecommendationBuy || combined.Recommendation == RecommendationAccumulate {
+		direction = "LONG"
+	} else if combined.Recommendation == RecommendationSell || combined.Recommendation == RecommendationDistribute {
+		direction = "SHORT"
+	}
+
+	return &types.TradeSignal{
+		Direction:  direction,
+		Confidence: combined.Confidence,
+		Reasoning:  combined.Reasoning,
 	}
 }
 
@@ -219,15 +287,15 @@ func CombineMultiTimeframeSignals(daily, fourHour, oneHour CombinedSignal) Multi
 		AlignmentPercent: 0.0,
 	}
 
-	// Extract signal directions (BUY/ACCUMULATE = bullish, SELL/DISTRIBUTE = bearish)
-	dailyBullish := daily.Recommendation == "BUY" || daily.Recommendation == "ACCUMULATE"
-	dailyBearish := daily.Recommendation == "SELL" || daily.Recommendation == "DISTRIBUTE"
+	// Extract signal directions
+	dailyBullish := daily.Recommendation == RecommendationBuy || daily.Recommendation == RecommendationAccumulate
+	dailyBearish := daily.Recommendation == RecommendationSell || daily.Recommendation == RecommendationDistribute
 
-	fourHourBullish := fourHour.Recommendation == "BUY" || fourHour.Recommendation == "ACCUMULATE"
-	fourHourBearish := fourHour.Recommendation == "SELL" || fourHour.Recommendation == "DISTRIBUTE"
+	fourHourBullish := fourHour.Recommendation == RecommendationBuy || fourHour.Recommendation == RecommendationAccumulate
+	fourHourBearish := fourHour.Recommendation == RecommendationSell || fourHour.Recommendation == RecommendationDistribute
 
-	oneHourBullish := oneHour.Recommendation == "BUY" || oneHour.Recommendation == "ACCUMULATE"
-	oneHourBearish := oneHour.Recommendation == "SELL" || oneHour.Recommendation == "DISTRIBUTE"
+	oneHourBullish := oneHour.Recommendation == RecommendationBuy || oneHour.Recommendation == RecommendationAccumulate
+	oneHourBearish := oneHour.Recommendation == RecommendationSell || oneHour.Recommendation == RecommendationDistribute
 
 	// Count alignments
 	alignedCount := 0
@@ -268,58 +336,47 @@ func CombineMultiTimeframeSignals(daily, fourHour, oneHour CombinedSignal) Multi
 	return result
 }
 
-// IsMultiTimeframeConfirmed checks if signal is strong enough to execute
-// Goal: Reduce false signals by ~60% through multi-timeframe confirmation
+// This is to help reduce false signals by ~60% through multi-timeframe confirmation giving strong indictation of trend direction
 func (m *MultiTimeframeSignal) IsMultiTimeframeConfirmed(requireStrongAlignment bool) bool {
 	if requireStrongAlignment {
-		// Strict: Daily + 4H must agree, 1H should not contradict
+		// Daily + 4H must agree, 1H should not contradict
 		if !m.Alignment {
 			return false
 		}
-		// Additional check: daily trend is primary
+		// check if daily trend is primary
 		return m.DailySignal.Confidence > 50.0 && m.FourHourSignal.Confidence > 50.0
 	}
-
-	// Loose: Any 2 timeframes aligned
+	// Moderate alignment: at least 2 timeframes agree
 	return m.AlignmentPercent >= 66.0
 }
 
 func FormatSignal(signal CombinedSignal) string {
-	emoji := "⏸️"
-	if signal.Recommendation == "BUY" || signal.Recommendation == "ACCUMULATE" {
-		emoji = "🟢"
-	} else if signal.Recommendation == "SELL" || signal.Recommendation == "DISTRIBUTE" {
-		emoji = "🔴"
-	}
-
-	return fmt.Sprintf("%s %s (%.0f%% confidence) - %s",
-		emoji,
+	return fmt.Sprintf("%s (%.0f%% confidence) - %s",
 		signal.Recommendation,
 		signal.Confidence,
 		signal.Reasoning,
 	)
 }
 
-// FormatMultiTimeframeSignal provides detailed multi-timeframe analysis output
 func FormatMultiTimeframeSignal(signal MultiTimeframeSignal) string {
-	alignment := "❌"
+	alignmentText := "NO"
 	if signal.Alignment {
-		alignment = "✅"
+		alignmentText = "YES"
 	}
 
 	return fmt.Sprintf(`
-📊 Multi-Timeframe Analysis:
+Multi-Timeframe Analysis:
   Daily:    %s (%.0f%%)
   4H:       %s (%.0f%%)
   1H:       %s (%.0f%%)
   
-  %s Alignment: %.0f%% | Composite Score: %.2f | Confidence: %.0f%%
-  📈 Recommended: %s
+  Alignment: %s (%.0f%%) | Composite Score: %.2f | Confidence: %.0f%%
+  Recommended: %s
 `,
 		signal.DailySignal.Recommendation, signal.DailySignal.Confidence,
 		signal.FourHourSignal.Recommendation, signal.FourHourSignal.Confidence,
 		signal.OneHourSignal.Recommendation, signal.OneHourSignal.Confidence,
-		alignment, signal.AlignmentPercent, signal.CompositeScore, signal.Confidence,
+		alignmentText, signal.AlignmentPercent, signal.CompositeScore, signal.Confidence,
 		signal.RecommendedTrade,
 	)
 }

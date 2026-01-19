@@ -99,7 +99,7 @@ func HandleScan(ctx context.Context, cfg *config.Config, q *database.Queries) {
 	fmt.Printf("✅ Scan complete! Updated %d symbols\n", scannedCount)
 }
 
-func HandleAnalyzeSingle(ctx context.Context, assetType string, q *database.Queries) {
+func HandleAnalyzeSingle(ctx context.Context, assetType string, q *database.Queries, newsStorage *newsscraping.NewsStorage, finnhubClient *newsscraping.FinnhubClient) {
 	if assetType == "" {
 		assetType = "stock" // default
 	}
@@ -118,6 +118,20 @@ func HandleAnalyzeSingle(ctx context.Context, assetType string, q *database.Quer
 	if err != nil || symbol == "" {
 		fmt.Println("❌ Invalid symbol")
 		return
+	}
+
+	// Fetch and store news for stocks (not crypto)
+	if assetType == "stock" && finnhubClient != nil && newsStorage != nil {
+		fmt.Println("📰 Fetching latest news...")
+		newsArticles, err := finnhubClient.FetchNews(symbol, 5)
+		if err == nil && len(newsArticles) > 0 {
+			for _, article := range newsArticles {
+				_ = newsStorage.SaveArticle(ctx, article)
+			}
+			log.Printf("✅ Saved %d news articles for %s", len(newsArticles), symbol)
+		} else if err != nil {
+			log.Printf("⚠️  Could not fetch news: %v", err)
+		}
 	}
 
 	timeframe, err := interactive.ShowTimeframeMenu()
@@ -162,7 +176,7 @@ func HandleAnalyzeSingle(ctx context.Context, assetType string, q *database.Quer
 	case "analytics":
 		tz, _ := interactive.ShowTimezoneMenu()
 		ClearInputBuffer()
-		interactive.DisplayAnalyticsData(bars, symbol, timeframe, tz, q)
+		interactive.DisplayAnalyticsData(bars, symbol, timeframe, tz, q, newsStorage)
 		fmt.Println("\n--- Press Enter to continue ---")
 		bufio.NewReader(os.Stdin).ReadBytes('\n')
 	case "vwap":
@@ -399,7 +413,7 @@ func HandleWatchlist(ctx context.Context, q *database.Queries) {
 	}
 }
 
-func HandleScout(ctx context.Context, cfg *config.Config, q *database.Queries) {
+func HandleScout(ctx context.Context, cfg *config.Config, q *database.Queries, newsStorage *newsscraping.NewsStorage, finnhubClient *newsscraping.FinnhubClient) {
 	if len(cfg.Profiles) == 0 {
 		fmt.Println("❌ No profiles configured")
 		return
@@ -492,7 +506,8 @@ func HandleScout(ctx context.Context, cfg *config.Config, q *database.Queries) {
 					if choice == "e" {
 						tz, _ := interactive.ShowTimezoneMenu()
 						ClearInputBuffer()
-						interactive.DisplayAnalyticsData(candidate.Bars, candidate.Symbol, "1Day", tz, q)
+						newsStorage := newsscraping.NewNewsStorage(q)
+						interactive.DisplayAnalyticsData(candidate.Bars, candidate.Symbol, "1Day", tz, q, newsStorage)
 						continue
 					}
 
@@ -938,7 +953,7 @@ func HandleWatchlistMenu(ctx context.Context, cfg *config.Config, q *database.Qu
 	}
 }
 
-func HandleAnalyzeAssetType(ctx context.Context, cfg *config.Config, q *database.Queries) {
+func HandleAnalyzeAssetType(ctx context.Context, cfg *config.Config, q *database.Queries, newsStorage *newsscraping.NewsStorage, finnhubClient *newsscraping.FinnhubClient) {
 	for {
 		fmt.Println("\n🔬 Analyze:")
 		fmt.Println("1. Stock")
@@ -958,10 +973,10 @@ func HandleAnalyzeAssetType(ctx context.Context, cfg *config.Config, q *database
 		}
 
 		if choice == 1 {
-			HandleAnalyzeSingle(ctx, "stock", datafeed.Queries)
+			HandleAnalyzeSingle(ctx, "stock", datafeed.Queries, newsStorage, finnhubClient)
 			ClearInputBuffer()
 		} else if choice == 2 && cfg.Features.CryptoSupport {
-			HandleAnalyzeSingle(ctx, "crypto", datafeed.Queries)
+			HandleAnalyzeSingle(ctx, "crypto", datafeed.Queries, newsStorage, finnhubClient)
 			ClearInputBuffer()
 		} else if (choice == 2 && !cfg.Features.CryptoSupport) || (choice == 3 && cfg.Features.CryptoSupport) {
 			return

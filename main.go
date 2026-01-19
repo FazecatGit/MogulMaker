@@ -108,7 +108,8 @@ func main() {
 	}
 
 	finnhubClient := newsscraping.NewFinnhubClient()
-	_ = finnhubClient
+	newsStorage := newsscraping.NewNewsStorage(datafeed.Queries)
+	log.Println("✅ News scraping initialized")
 
 	ctx := context.Background()
 	go startBackgroundScanner(ctx, cfg)
@@ -143,9 +144,9 @@ func main() {
 		case 1:
 			handlers.HandleWatchlistMenu(ctx, cfg, datafeed.Queries)
 		case 2:
-			handlers.HandleAnalyzeAssetType(ctx, cfg, datafeed.Queries)
+			handlers.HandleAnalyzeAssetType(ctx, cfg, datafeed.Queries, newsStorage, finnhubClient)
 		case 3:
-			handlers.HandleScout(ctx, cfg, datafeed.Queries)
+			handlers.HandleScout(ctx, cfg, datafeed.Queries, newsStorage, finnhubClient)
 		case 4:
 			handlers.HandleExecuteTrades(ctx, cfg, datafeed.Queries, alpclient)
 		case 5:

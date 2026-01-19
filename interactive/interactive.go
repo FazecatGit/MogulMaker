@@ -8,6 +8,7 @@ import (
 	datafeed "github.com/fazecat/mongelmaker/Internal/database"
 	sqlc "github.com/fazecat/mongelmaker/Internal/database/sqlc"
 	"github.com/fazecat/mongelmaker/Internal/export"
+	newsscraping "github.com/fazecat/mongelmaker/Internal/news_scraping"
 	"github.com/fazecat/mongelmaker/Internal/strategy"
 	"github.com/fazecat/mongelmaker/Internal/strategy/indicators"
 	"github.com/fazecat/mongelmaker/Internal/strategy/signals"
@@ -57,6 +58,85 @@ func FetchMarketDataWithType(symbol string, timeframe string, limit int, startDa
 	}
 
 	return bars, nil
+}
+
+// fetches data from multiple timeframes and combines signals
+func FetchMultiTimeframeSignals(symbol string, assetType string) (*signals.MultiTimeframeSignal, error) {
+	// Fetch data from 3 timeframes: Daily, 4H, 1H
+	dailyBars, err := datafeed.GetAlpacaBarsWithType(symbol, "1Day", 100, "", assetType)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch daily data: %w", err)
+	}
+
+	fourHourBars, err := datafeed.GetAlpacaBarsWithType(symbol, "4Hour", 100, "", assetType)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch 4H data: %w", err)
+	}
+
+	oneHourBars, err := datafeed.GetAlpacaBarsWithType(symbol, "1Hour", 100, "", assetType)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch 1H data: %w", err)
+	}
+
+	// Extract closes for RSI calculation
+	dailyCloses := make([]float64, len(dailyBars))
+	for i, bar := range dailyBars {
+		dailyCloses[i] = bar.Close
+	}
+	fourHourCloses := make([]float64, len(fourHourBars))
+	for i, bar := range fourHourBars {
+		fourHourCloses[i] = bar.Close
+	}
+	oneHourCloses := make([]float64, len(oneHourBars))
+	for i, bar := range oneHourBars {
+		oneHourCloses[i] = bar.Close
+	}
+
+	// Calculate RSI for each timeframe
+	dailyRSIValues, err := indicators.CalculateRSI(dailyCloses, 14)
+	if err != nil || len(dailyRSIValues) == 0 {
+		return nil, fmt.Errorf("failed to calculate daily RSI: %w", err)
+	}
+	dailyRSI := dailyRSIValues[len(dailyRSIValues)-1]
+
+	fourHourRSIValues, err := indicators.CalculateRSI(fourHourCloses, 14)
+	if err != nil || len(fourHourRSIValues) == 0 {
+		return nil, fmt.Errorf("failed to calculate 4H RSI: %w", err)
+	}
+	fourHourRSI := fourHourRSIValues[len(fourHourRSIValues)-1]
+
+	oneHourRSIValues, err := indicators.CalculateRSI(oneHourCloses, 14)
+	if err != nil || len(oneHourRSIValues) == 0 {
+		return nil, fmt.Errorf("failed to calculate 1H RSI: %w", err)
+	}
+	oneHourRSI := oneHourRSIValues[len(oneHourRSIValues)-1]
+
+	// Calculate ATR using scoring helper
+	dailyATR := scoring.CalculateATRFromBars(dailyBars)
+	fourHourATR := scoring.CalculateATRFromBars(fourHourBars)
+	oneHourATR := scoring.CalculateATRFromBars(oneHourBars)
+
+	// Analyze each timeframe
+	dailyCandle := analyzer.Candlestick{Open: dailyBars[len(dailyBars)-1].Open, Close: dailyBars[len(dailyBars)-1].Close, High: dailyBars[len(dailyBars)-1].High, Low: dailyBars[len(dailyBars)-1].Low}
+	_, dailyResults := analyzer.AnalyzeCandlestick(dailyCandle)
+	dailyAnalysis := dailyResults["Analysis"]
+
+	fourHourCandle := analyzer.Candlestick{Open: fourHourBars[len(fourHourBars)-1].Open, Close: fourHourBars[len(fourHourBars)-1].Close, High: fourHourBars[len(fourHourBars)-1].High, Low: fourHourBars[len(fourHourBars)-1].Low}
+	_, fourHourResults := analyzer.AnalyzeCandlestick(fourHourCandle)
+	fourHourAnalysis := fourHourResults["Analysis"]
+
+	oneHourCandle := analyzer.Candlestick{Open: oneHourBars[len(oneHourBars)-1].Open, Close: oneHourBars[len(oneHourBars)-1].Close, High: oneHourBars[len(oneHourBars)-1].High, Low: oneHourBars[len(oneHourBars)-1].Low}
+	_, oneHourResults := analyzer.AnalyzeCandlestick(oneHourCandle)
+	oneHourAnalysis := oneHourResults["Analysis"]
+
+	// Generate signals for each timeframe
+	dailySignal := signals.CalculateSignal(&dailyRSI, &dailyATR, dailyBars, symbol, dailyAnalysis)
+	fourHourSignal := signals.CalculateSignal(&fourHourRSI, &fourHourATR, fourHourBars, symbol, fourHourAnalysis)
+	oneHourSignal := signals.CalculateSignal(&oneHourRSI, &oneHourATR, oneHourBars, symbol, oneHourAnalysis)
+
+	// Combine multi-timeframe signals
+	multiSignal := signals.CombineMultiTimeframeSignals(dailySignal, fourHourSignal, oneHourSignal)
+	return &multiSignal, nil
 }
 
 func ShowMainMenu() (string, error) {
@@ -129,8 +209,13 @@ func DisplayAdvancedData(bars []datafeed.Bar, symbol string, timeframe string) {
 	}
 }
 
-func DisplayAnalyticsData(bars []datafeed.Bar, symbol string, timeframe string, tz *time.Location, queries *sqlc.Queries) {
+func DisplayAnalyticsData(bars []datafeed.Bar, symbol string, timeframe string, tz *time.Location, queries *sqlc.Queries, newsStorage *newsscraping.NewsStorage) {
 	fmt.Printf("\n📈 Analytics Data for %s (%s) - Timezone: %s\n", symbol, timeframe, tz.String())
+
+	// Display news first if available
+	if newsStorage != nil {
+		displayNewsForSymbol(symbol, newsStorage)
+	}
 
 	var startTime, endTime time.Time
 	if len(bars) > 0 {
@@ -330,7 +415,7 @@ func DisplayAnalyticsData(bars []datafeed.Bar, symbol string, timeframe string, 
 	}
 
 	// Display final signal recommendation (before whale events)
-	displayFinalSignal(bars, symbol, latestAnalysis, latestRSI, latestATR)
+	displayFinalSignal(bars, symbol, latestAnalysis, latestRSI, latestATR, "stock")
 
 	// Display whale events if database available
 	if queries != nil {
@@ -342,18 +427,35 @@ func DisplayAnalyticsData(bars []datafeed.Bar, symbol string, timeframe string, 
 	displaySupportResistance(bars)
 }
 
-func displayFinalSignal(bars []datafeed.Bar, symbol string, analysis string, rsi, atr *float64) {
+func displayFinalSignal(bars []datafeed.Bar, symbol string, analysis string, rsi, atr *float64, assetType string) {
 	if len(bars) == 0 {
 		return
 	}
 
 	signal := signals.CalculateSignal(rsi, atr, bars, symbol, analysis)
 
+	// Apply signal quality filtering
+	filter := signals.NewSignalQualityFilter()
+	filter.MinConfidenceThreshold = 70.0
+	filter.VerboseLogging = true
+
+	tradeSignal := signals.ConvertToTradeSignal(signal)
+	filteredResult := filter.FilterSignal(tradeSignal)
+
 	fmt.Println()
 	fmt.Println("═══════════════════════════════════════════════════════════════════════════════════")
 
 	recommendationStr := signals.FormatSignal(signal)
-	fmt.Printf("🎯 FINAL RECOMMENDATION: %s\n", recommendationStr)
+
+	// Display filtering results
+	if filteredResult.Passed {
+		fmt.Printf("🎯 FINAL RECOMMENDATION: %s \n", recommendationStr)
+		fmt.Printf("✅ Signal Quality: %.1f%% - %s\n", filteredResult.QualityScore, filteredResult.RecommendedAction)
+	} else {
+		fmt.Printf("⚠️  FILTERED SIGNAL: %s\n", recommendationStr)
+		fmt.Printf("❌ Quality Check Failed: %s\n", filteredResult.FailureReason)
+		fmt.Printf("   Recommendation: %s\n", filteredResult.RecommendedAction)
+	}
 
 	fmt.Printf("Reason: %s\n", signal.Reasoning)
 	fmt.Println("\nSignal Breakdown:")
@@ -368,6 +470,33 @@ func displayFinalSignal(bars []datafeed.Bar, symbol string, analysis string, rsi
 			component.Score,
 			component.Weight*100)
 	}
+
+	// Add Multi-Timeframe Analysis
+	fmt.Println()
+	fmt.Println("═══════════════════════════════════════════════════════════════════════════════════")
+	fmt.Println("📊 MULTI-TIMEFRAME ANALYSIS")
+	fmt.Println("═══════════════════════════════════════════════════════════════════════════════════")
+
+	multiSignal, err := FetchMultiTimeframeSignals(symbol, assetType)
+	if err != nil {
+		fmt.Printf("⚠️  Could not fetch multi-timeframe data: %v\n", err)
+	} else {
+		// Display multi-timeframe analysis
+		fmt.Print(signals.FormatMultiTimeframeSignal(*multiSignal))
+
+		// Check if multi-timeframe confirms the signal
+		if multiSignal.IsMultiTimeframeConfirmed(true) {
+			fmt.Println("✅ STRONG CONFIRMATION: Multiple timeframes aligned!")
+			fmt.Println("   This signal has high probability of success.")
+		} else if multiSignal.IsMultiTimeframeConfirmed(false) {
+			fmt.Println("⚠️  MODERATE CONFIRMATION: Partial timeframe alignment.")
+			fmt.Println("   Consider waiting for stronger confirmation.")
+		} else {
+			fmt.Println("❌ NO CONFIRMATION: Timeframes are conflicting.")
+			fmt.Println("   High risk - consider skipping this trade.")
+		}
+	}
+
 	fmt.Println("═══════════════════════════════════════════════════════════════════════════════════")
 }
 
@@ -823,4 +952,35 @@ func DisplayVWAPAnalysis(bars []datafeed.Bar, symbol string, timeframe string) {
 	}
 
 	fmt.Println("\n==========================================")
+}
+
+// displayNewsForSymbol fetches and displays recent news articles
+func displayNewsForSymbol(symbol string, newsStorage *newsscraping.NewsStorage) {
+	ctx := context.Background()
+	articles, err := newsStorage.GetLatestNews(ctx, symbol, 5)
+	if err != nil || len(articles) == 0 {
+		return
+	}
+
+	fmt.Println()
+	fmt.Println("═══════════════════════════════════════════════════════════════════════════════════")
+	fmt.Printf("📰 LATEST NEWS FOR %s\n", symbol)
+	fmt.Println("═══════════════════════════════════════════════════════════════════════════════════")
+
+	for i, article := range articles {
+		sentimentEmoji := "⚪"
+		if article.Sentiment == newsscraping.Positive {
+			sentimentEmoji = "🟢"
+		} else if article.Sentiment == newsscraping.Negative {
+			sentimentEmoji = "🔴"
+		}
+
+		fmt.Printf("\n%d. %s %s\n", i+1, sentimentEmoji, article.Headline)
+		fmt.Printf("   Source: %s | Published: %s\n", article.Source, article.PublishedAt.Format("Jan 02, 2006 15:04"))
+		if article.URL != "" {
+			fmt.Printf("   URL: %s\n", article.URL)
+		}
+	}
+
+	fmt.Println("═══════════════════════════════════════════════════════════════════════════════════")
 }
