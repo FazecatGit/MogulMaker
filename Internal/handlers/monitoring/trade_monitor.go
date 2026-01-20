@@ -518,6 +518,32 @@ func (tm *Monitor) PrintTradeHistory() {
 	fmt.Println(formatting.Separator(width) + "\n")
 }
 
+// displays risk events and alerts from the risk manager
+func (tm *Monitor) PrintRiskEvents() {
+	if tm.riskManager == nil {
+		fmt.Println("⚠️  Risk Manager not available")
+		return
+	}
+
+	width := 80
+	fmt.Println("\n" + formatting.Separator(width))
+	fmt.Println("RISK EVENTS & ALERTS")
+	fmt.Println(formatting.Separator(width))
+
+	// Get recent risk events from risk manager
+	events := tm.riskManager.GetRecentEvents()
+
+	if len(events) == 0 {
+		fmt.Println("✅ No recent risk events")
+	} else {
+		for _, event := range events {
+			fmt.Printf("⚠️  %s\n", event)
+		}
+	}
+
+	fmt.Println(formatting.Separator(width) + "\n")
+}
+
 func (tm *Monitor) determineAlertLevel(unrealizedPnLPercent float64) (string, string) {
 	switch {
 	case unrealizedPnLPercent <= -2:

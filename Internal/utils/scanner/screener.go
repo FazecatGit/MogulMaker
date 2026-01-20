@@ -173,6 +173,23 @@ func scoreStockWithType(symbol, timeframe string, numBars int, criteria Screener
 		}
 	}
 
+	patternDetector := detection.NewPatternDetector()
+	patterns := patternDetector.DetectAllPatterns(bars)
+	for _, pattern := range patterns {
+		if pattern.Detected {
+			switch pattern.Direction {
+			case "LONG":
+				score += pattern.Confidence / 10
+				signals = append(signals, fmt.Sprintf(" %s [%.0f%% confidence]", pattern.Pattern, pattern.Confidence))
+			case "SHORT":
+				score += pattern.Confidence / 15
+				signals = append(signals, fmt.Sprintf(" %s [%.0f%% confidence]", pattern.Pattern, pattern.Confidence))
+			case "NONE":
+				signals = append(signals, fmt.Sprintf("  %s [%.0f%% confidence]", pattern.Pattern, pattern.Confidence))
+			}
+		}
+	}
+
 	support := indicators.FindSupport(bars)
 	resistance := indicators.FindResistance(bars)
 

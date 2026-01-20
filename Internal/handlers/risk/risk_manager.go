@@ -406,3 +406,25 @@ func (r *Report) Print() {
 	}
 	fmt.Println(formatting.Separator(width) + "\n")
 }
+
+// GetRecentEvents returns recent risk events for monitoring
+func (rm *Manager) GetRecentEvents() []string {
+	rm.riskEventsMutex.RLock()
+	defer rm.riskEventsMutex.RUnlock()
+
+	// Get events from last 24 hours
+	cutoff := time.Now().Add(-24 * time.Hour)
+	var recentEvents []string
+
+	for _, event := range rm.riskEvents {
+		if event.Timestamp.After(cutoff) {
+			recentEvents = append(recentEvents, fmt.Sprintf("[%s] %s: %s - %s",
+				event.Timestamp.Format("15:04:05"),
+				event.Severity,
+				event.EventType,
+				event.Details))
+		}
+	}
+
+	return recentEvents
+}

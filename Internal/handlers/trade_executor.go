@@ -16,14 +16,12 @@ import (
 	"github.com/fazecat/mogulmaker/Internal/utils/scanner"
 )
 
-// displays detected signals and lets user execute trades
 func ExecuteTradesFromSignals(ctx context.Context, cfg *config.Config, scores []scanner.StockScore, client *alpaca.Client) {
 	if client == nil {
-		fmt.Println("❌ Alpaca client not initialized")
+		fmt.Println("Alpaca client not initialized")
 		return
 	}
 
-	// Filter scores with trade signals
 	var signalsAvailable []scanner.StockScore
 	for _, score := range scores {
 		if score.LongSignal != nil || score.ShortSignal != nil {
@@ -32,23 +30,22 @@ func ExecuteTradesFromSignals(ctx context.Context, cfg *config.Config, scores []
 	}
 
 	if len(signalsAvailable) == 0 {
-		fmt.Println("✅ No trade signals detected")
+		fmt.Println("No trade signals detected")
 		return
 	}
 
-	fmt.Printf("\n📊 Found %d symbols with trade signals\n", len(signalsAvailable))
+	fmt.Printf("\nFound %d symbols with trade signals\n", len(signalsAvailable))
 
-	// Display all signals
 	for i, score := range signalsAvailable {
 		fmt.Printf("\n[%d] %s\n", i+1, score.Symbol)
 
 		if score.LongSignal != nil {
-			fmt.Printf("    🟢 LONG  | Confidence: %.2f%% | %s\n",
+			fmt.Printf(" LONG  | Confidence: %.2f%% | %s\n",
 				score.LongSignal.Confidence, score.LongSignal.Reasoning)
 		}
 
 		if score.ShortSignal != nil {
-			fmt.Printf("    🔴 SHORT | Confidence: %.2f%% | %s\n",
+			fmt.Printf(" SHORT | Confidence: %.2f%% | %s\n",
 				score.ShortSignal.Confidence, score.ShortSignal.Reasoning)
 		}
 	}
@@ -66,7 +63,7 @@ func ExecuteTradesFromSignals(ctx context.Context, cfg *config.Config, scores []
 
 		idx, err := strconv.Atoi(input)
 		if err != nil || idx < 1 || idx > len(signalsAvailable) {
-			fmt.Println("❌ Invalid selection")
+			fmt.Println("Invalid selection")
 			continue
 		}
 
@@ -74,13 +71,12 @@ func ExecuteTradesFromSignals(ctx context.Context, cfg *config.Config, scores []
 		executeTradeForSymbol(ctx, cfg, score, client)
 	}
 
-	fmt.Println("\n✅ Trade execution complete")
+	fmt.Println("\nTrade execution complete")
 }
 
 func executeTradeForSymbol(ctx context.Context, cfg *config.Config, score scanner.StockScore, client *alpaca.Client) {
-	fmt.Printf("\n💼 Trading %s:\n", score.Symbol)
+	fmt.Printf("\nTrading %s:\n", score.Symbol)
 
-	// Show options
 	if score.LongSignal != nil && score.ShortSignal != nil {
 		fmt.Println("1. LONG  (Buy)")
 		fmt.Println("2. SHORT (Sell)")
@@ -122,15 +118,15 @@ func executeLongTrade(ctx context.Context, cfg *config.Config, score scanner.Sto
 	var qty int64
 	_, err := fmt.Scanln(&qty)
 	if err != nil || qty <= 0 {
-		fmt.Println("❌ Invalid quantity")
+		fmt.Println("Invalid quantity")
 		return
 	}
 
 	err = strategy.ExecuteTrade(ctx, client, score.Symbol, qty, score.LongSignal)
 	if err != nil {
-		fmt.Printf("❌ Trade failed: %v\n", err)
+		fmt.Printf("Trade failed: %v\n", err)
 	} else {
-		fmt.Printf("✅ LONG order executed: %s x%d\n", score.Symbol, qty)
+		fmt.Printf("LONG order executed: %s x%d\n", score.Symbol, qty)
 	}
 }
 
@@ -139,32 +135,31 @@ func executeShortTrade(ctx context.Context, cfg *config.Config, score scanner.St
 	var qty int64
 	_, err := fmt.Scanln(&qty)
 	if err != nil || qty <= 0 {
-		fmt.Println("❌ Invalid quantity")
+		fmt.Println("Invalid quantity")
 		return
 	}
 
 	err = strategy.ExecuteTrade(ctx, client, score.Symbol, qty, score.ShortSignal)
 	if err != nil {
-		fmt.Printf("❌ Trade failed: %v\n", err)
+		fmt.Printf("Trade failed: %v\n", err)
 	} else {
-		fmt.Printf("✅ SHORT order executed: %s x%d\n", score.Symbol, qty)
+		fmt.Printf("SHORT order executed: %s x%d\n", score.Symbol, qty)
 	}
 }
 
-// displays past trades
 func ViewTradeHistory(ctx context.Context, symbol string) {
 	trades, err := datafeed.GetTradeHistory(ctx, symbol, 50)
 	if err != nil {
-		fmt.Printf("❌ Failed to fetch trade history: %v\n", err)
+		fmt.Printf("Failed to fetch trade history: %v\n", err)
 		return
 	}
 
 	if len(trades) == 0 {
-		fmt.Printf("ℹ️  No trades found for %s\n", symbol)
+		fmt.Printf("No trades found for %s\n", symbol)
 		return
 	}
 
-	fmt.Printf("\n📈 Trade History for %s (Last 50):\n", symbol)
+	fmt.Printf("\nTrade History for %s (Last 50):\n", symbol)
 	fmt.Println("─────────────────────────────────────────────────────────────")
 	for _, trade := range trades {
 		status := "PENDING"
@@ -182,20 +177,19 @@ func ViewTradeHistory(ctx context.Context, symbol string) {
 	}
 }
 
-// shows all open positions
 func ViewOpenTrades(ctx context.Context) {
 	trades, err := datafeed.GetOpenTrades(ctx)
 	if err != nil {
-		fmt.Printf("❌ Failed to fetch open trades: %v\n", err)
+		fmt.Printf("Failed to fetch open trades: %v\n", err)
 		return
 	}
 
 	if len(trades) == 0 {
-		fmt.Println("ℹ️  No open trades")
+		fmt.Println("No open trades")
 		return
 	}
 
-	fmt.Printf("\n📊 Open Trades (%d):\n", len(trades))
+	fmt.Printf("\nOpen Trades (%d):\n", len(trades))
 	fmt.Println("─────────────────────────────────────────────────────────────")
 	for _, trade := range trades {
 		status := "PENDING"
