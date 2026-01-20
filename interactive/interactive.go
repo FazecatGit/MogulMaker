@@ -9,6 +9,7 @@ import (
 	sqlc "github.com/fazecat/mogulmaker/Internal/database/sqlc"
 	"github.com/fazecat/mogulmaker/Internal/export"
 	newsscraping "github.com/fazecat/mogulmaker/Internal/news_scraping"
+	"github.com/fazecat/mogulmaker/Internal/strategy/detection"
 	"github.com/fazecat/mogulmaker/Internal/strategy/indicators"
 	"github.com/fazecat/mogulmaker/Internal/strategy/signals"
 	"github.com/fazecat/mogulmaker/Internal/types"
@@ -419,6 +420,122 @@ func DisplayAnalyticsData(bars []datafeed.Bar, symbol string, timeframe string, 
 		displayWhaleEventsInline(symbol, queries)
 	}
 	displaySupportResistance(bars)
+
+	displayPatternSignals(bars, symbol)
+}
+
+// displayPatternSignals shows the most relevant chart pattern for a symbol
+func displayPatternSignals(bars []datafeed.Bar, symbol string) {
+	if len(bars) < 5 {
+		return
+	}
+
+	patternDetector := detection.NewPatternDetector()
+	patterns := patternDetector.DetectAllPatterns(bars)
+
+	if len(patterns) == 0 {
+		return
+	}
+
+	// Filter and select the best pattern
+	var bestPattern *detection.PatternSignal
+	var bullishPatterns []detection.PatternSignal
+	var bearishPatterns []detection.PatternSignal
+	var neutralPatterns []detection.PatternSignal
+
+	for _, pattern := range patterns {
+		if pattern.Detected {
+			if pattern.Direction == "LONG" {
+				bullishPatterns = append(bullishPatterns, pattern)
+			} else if pattern.Direction == "SHORT" {
+				bearishPatterns = append(bearishPatterns, pattern)
+			} else {
+				neutralPatterns = append(neutralPatterns, pattern)
+			}
+		}
+	}
+
+	// Select the highest confidence pattern from the dominant direction
+	if len(bullishPatterns) > 0 && len(bearishPatterns) > 0 {
+		// Conflicting signals - pick the highest confidence overall
+		var highestConfidence float64
+		for i := range bullishPatterns {
+			if bullishPatterns[i].Confidence > highestConfidence {
+				highestConfidence = bullishPatterns[i].Confidence
+				bestPattern = &bullishPatterns[i]
+			}
+		}
+		for i := range bearishPatterns {
+			if bearishPatterns[i].Confidence > highestConfidence {
+				highestConfidence = bearishPatterns[i].Confidence
+				bestPattern = &bearishPatterns[i]
+			}
+		}
+	} else if len(bullishPatterns) > 0 {
+		// Only bullish patterns - pick highest confidence
+		bestPattern = &bullishPatterns[0]
+		for i := range bullishPatterns {
+			if bullishPatterns[i].Confidence > bestPattern.Confidence {
+				bestPattern = &bullishPatterns[i]
+			}
+		}
+	} else if len(bearishPatterns) > 0 {
+		// Only bearish patterns - pick highest confidence
+		bestPattern = &bearishPatterns[0]
+		for i := range bearishPatterns {
+			if bearishPatterns[i].Confidence > bestPattern.Confidence {
+				bestPattern = &bearishPatterns[i]
+			}
+		}
+	} else if len(neutralPatterns) > 0 {
+		// Only neutral patterns
+		bestPattern = &neutralPatterns[0]
+		for i := range neutralPatterns {
+			if neutralPatterns[i].Confidence > bestPattern.Confidence {
+				bestPattern = &neutralPatterns[i]
+			}
+		}
+	}
+
+	if bestPattern == nil {
+		return
+	}
+
+	fmt.Println("\n═══════════════════════════════════════════════════════════════════════════════════")
+	fmt.Println("📊 CHART PATTERN ANALYSIS")
+	fmt.Println("═══════════════════════════════════════════════════════════════════════════════════")
+
+	directionIcon := "⏸️ "
+	if bestPattern.Direction == "LONG" {
+		directionIcon = "📈"
+	} else if bestPattern.Direction == "SHORT" {
+		directionIcon = "📉"
+	}
+
+	fmt.Printf("%s PRIMARY PATTERN: %s\n", directionIcon, bestPattern.Pattern)
+	fmt.Printf("   Direction: %s | Confidence: %.1f%%\n", bestPattern.Direction, bestPattern.Confidence)
+	fmt.Printf("   Support: $%.2f | Resistance: $%.2f\n", bestPattern.SupportLevel, bestPattern.ResistanceLevel)
+
+	if bestPattern.Direction == "LONG" && bestPattern.PriceTargetUp > 0 {
+		fmt.Printf("   Target: $%.2f | Stop Loss: $%.2f | R:R %.2f:1\n",
+			bestPattern.PriceTargetUp, bestPattern.StopLossLevel, bestPattern.RiskRewardRatio)
+	} else if bestPattern.Direction == "SHORT" && bestPattern.PriceTargetDown > 0 {
+		fmt.Printf("   Target: $%.2f | Stop Loss: $%.2f | R:R %.2f:1\n",
+			bestPattern.PriceTargetDown, bestPattern.StopLossLevel, bestPattern.RiskRewardRatio)
+	}
+
+	fmt.Printf("   Reasoning: %s\n", bestPattern.Reasoning)
+
+	// Show count of other detected patterns
+	otherCount := len(bullishPatterns) + len(bearishPatterns) + len(neutralPatterns) - 1
+	if otherCount > 0 {
+		fmt.Printf("\n   ℹ️  Note: %d other pattern(s) detected but showing highest confidence\n", otherCount)
+		if len(bullishPatterns) > 0 && len(bearishPatterns) > 0 {
+			fmt.Printf("   ⚠️  Mixed signals: %d bullish, %d bearish patterns found\n", len(bullishPatterns), len(bearishPatterns))
+		}
+	}
+
+	fmt.Println("═══════════════════════════════════════════════════════════════════════════════════")
 }
 
 func displayFinalSignal(bars []datafeed.Bar, symbol string, analysis string, rsi, atr *float64, assetType string) {
@@ -427,8 +544,6 @@ func displayFinalSignal(bars []datafeed.Bar, symbol string, analysis string, rsi
 	}
 
 	signal := signals.CalculateSignal(rsi, atr, bars, symbol, analysis)
-
-	// Apply signal quality filtering
 	filter := signals.NewSignalQualityFilter()
 	filter.MinConfidenceThreshold = 70.0
 	filter.VerboseLogging = true

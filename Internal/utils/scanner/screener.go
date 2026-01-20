@@ -128,86 +128,121 @@ func scoreStockWithType(symbol, timeframe string, numBars int, criteria Screener
 	}
 	avgVol20 := utils.CalculateAvgVolume(volumes, 20)
 
-	score = 0
+	// WEIGHTED SCORING SYSTEM (0-10 scale)
+	// RSI: 20%, Volume: 15%, S/R: 15%, Signal Quality: 20%, Patterns: 10%, Volatility: 10%, Whales: 5%, News: 5%
+	score = 0.0
 	signals = []string{}
 
+	// RSI Score (0-2.0 points = 20% weight)
 	if rsi != nil {
 		if *rsi < criteria.MinOversoldRSI {
-			score += 20
+			// More oversold = higher score (bullish opportunity)
+			rsiScore := (criteria.MinOversoldRSI - *rsi) / criteria.MinOversoldRSI * 2.0
+			if rsiScore > 2.0 {
+				rsiScore = 2.0
+			}
+			score += rsiScore
 			signals = append(signals, fmt.Sprintf("RSI Oversold: %.2f", *rsi))
 		} else if *rsi > criteria.MaxRSI {
-			score -= 10
+			// Overbought is negative
+			score -= 1.0
 			signals = append(signals, fmt.Sprintf("RSI Overbought: %.2f", *rsi))
 		} else {
-			score += 5
+			// Neutral RSI gets small bonus
+			score += 0.5
 		}
 	}
 
+	// Volatility Score (0-1.0 points = 10% weight)
 	if atr != nil && *atr > criteria.MinATR {
-		score += 10
+		// Normalize ATR score (higher ATR = more opportunity but cap it)
+		atrScore := (*atr / criteria.MinATR) * 0.5
+		if atrScore > 1.0 {
+			atrScore = 1.0
+		}
+		score += atrScore
 		signals = append(signals, fmt.Sprintf("High Volatility ATR: %.2f", *atr))
 	}
 
+	// Volume Score (0-1.5 points = 15% weight)
 	if avgVol20 > 0 {
 		volRatio := float64(latestBar.Volume) / avgVol20
 		if volRatio > criteria.MinVolumeRatio {
-			score += 15
+			// Scale volume score: 1x = 0.5 pts, 2x = 1.0 pts, 3x+ = 1.5 pts
+			volScore := (volRatio - 1.0) * 0.75
+			if volScore > 1.5 {
+				volScore = 1.5
+			}
+			score += volScore
 			signals = append(signals, fmt.Sprintf("High Volume: %.1fx avg", volRatio))
 		}
 	}
 
+	// News Score (0-0.5 points = 5% weight)
 	if newsStorage != nil {
 		news, err := newsStorage.GetLatestNews(context.Background(), symbol, 1)
 		if err == nil && len(news) > 0 && news[0].Sentiment == Positive {
-			score += 10
+			score += 0.5
 		}
 	}
 
+	// Whale Activity Score (0-0.5 points = 5% weight)
 	whales := detection.DetectWhales(symbol, bars)
 	if len(whales) > 0 {
+		whaleScore := 0.0
 		for _, whale := range whales {
 			if whale.Conviction == "HIGH" {
-				score += 5
+				whaleScore += 0.25
 				signals = append(signals, fmt.Sprintf("🐋 Whale %s: Z=%.2f", whale.Direction, whale.ZScore))
 			}
 		}
+		if whaleScore > 0.5 {
+			whaleScore = 0.5
+		}
+		score += whaleScore
 	}
 
+	// Pattern Detection Score (0-1.0 points = 10% weight)
 	patternDetector := detection.NewPatternDetector()
 	patterns := patternDetector.DetectAllPatterns(bars)
+	patternScore := 0.0
 	for _, pattern := range patterns {
 		if pattern.Detected {
 			switch pattern.Direction {
 			case "LONG":
-				score += pattern.Confidence / 10
-				signals = append(signals, fmt.Sprintf(" %s [%.0f%% confidence]", pattern.Pattern, pattern.Confidence))
+				patternScore += (pattern.Confidence / 100.0) * 0.5 // Max 0.5 per pattern
+				signals = append(signals, fmt.Sprintf("📈 %s [%.0f%% confidence]", pattern.Pattern, pattern.Confidence))
 			case "SHORT":
-				score += pattern.Confidence / 15
-				signals = append(signals, fmt.Sprintf(" %s [%.0f%% confidence]", pattern.Pattern, pattern.Confidence))
+				patternScore += (pattern.Confidence / 100.0) * 0.3 // Max 0.3 per pattern
+				signals = append(signals, fmt.Sprintf("📉 %s [%.0f%% confidence]", pattern.Pattern, pattern.Confidence))
 			case "NONE":
-				signals = append(signals, fmt.Sprintf("  %s [%.0f%% confidence]", pattern.Pattern, pattern.Confidence))
+				signals = append(signals, fmt.Sprintf("⏸️  %s [%.0f%% confidence]", pattern.Pattern, pattern.Confidence))
 			}
 		}
 	}
+	if patternScore > 1.0 {
+		patternScore = 1.0
+	}
+	score += patternScore
 
+	// Support/Resistance Score (0-1.5 points = 15% weight)
 	support := indicators.FindSupport(bars)
 	resistance := indicators.FindResistance(bars)
-
 	currentPrice := latestBar.Close
+
 	if currentPrice < support*1.01 {
-		score += 15 //  buy signal
+		score += 1.5 // Strong buy signal near support
 		signals = append(signals, fmt.Sprintf("Near Support: $%.2f", support))
 	}
 	if currentPrice > resistance*0.99 {
-		score -= 10 // Sell signal
+		score -= 1.0 // Penalty for being at resistance
 		signals = append(signals, fmt.Sprintf("Near Resistance: $%.2f", resistance))
 	}
 
+	// Signal Quality Score (0-2.0 points = 20% weight)
 	combinedSignal := signalsPkg.CalculateSignal(rsi, atr, bars, symbol, "")
-
-	// Apply signal quality filtering
 	filter := signalsPkg.NewSignalQualityFilter()
-	filter.MinConfidenceThreshold = 65.0 // Require 65% confidence for screener
+	filter.MinConfidenceThreshold = 65.0
 	filter.VerboseLogging = false
 
 	tradeSignal := signalsPkg.ConvertToTradeSignal(combinedSignal)
@@ -216,11 +251,16 @@ func scoreStockWithType(symbol, timeframe string, numBars int, criteria Screener
 	if filteredResult.Passed {
 		signals = append(signals, fmt.Sprintf("\n[FINAL] %s [Quality: %.1f%% ✓]",
 			signalsPkg.FormatSignal(combinedSignal), filteredResult.QualityScore))
-		score += 10 // Bonus for high-quality signal
+		// Scale quality score: 65% = 1.0 pts, 100% = 2.0 pts
+		qualityScore := ((filteredResult.QualityScore-65.0)/35.0)*1.0 + 1.0
+		if qualityScore > 2.0 {
+			qualityScore = 2.0
+		}
+		score += qualityScore
 	} else {
 		signals = append(signals, fmt.Sprintf("\n[WARNING] SIGNAL FILTERED: %s (Reason: %s)",
 			signalsPkg.FormatSignal(combinedSignal), filteredResult.FailureReason))
-		score -= 5 // Penalty for low-quality signal
+		score -= 0.5 // Small penalty for filtered signal
 	}
 
 	longSignal = AnalyzeForLongs(latestBar, rsi, atr, criteria)
@@ -249,14 +289,23 @@ func scoreStockWithType(symbol, timeframe string, numBars int, criteria Screener
 		// Validate signal with S/R levels
 		srValidation = srValidator.ValidateSignalWithSR(typesSignal, bars, currentPrice)
 
-		// Adjust score based on S/R validation
+		// S/R validation adds bonus (up to +0.5 points)
 		if srValidation.IsValidLocation {
-			score += (srValidation.ValidationScore / 10.0) // Add up to 10 points for perfect S/R
+			srBonus := (srValidation.ValidationScore / 100.0) * 0.5
+			score += srBonus
 			signals = append(signals, fmt.Sprintf("[VALID] S/R: %.0f%% - %s", srValidation.ValidationScore, srValidation.DetailedAnalysis))
 		} else {
-			score -= 5 // Penalty for poor S/R positioning
+			score -= 0.5 // Penalty for poor S/R positioning
 			signals = append(signals, fmt.Sprintf("[WARNING] S/R: %.0f%% - %s", srValidation.ValidationScore, srValidation.DetailedAnalysis))
 		}
+	}
+
+	// Final capping to ensure 0-10 range
+	if score > 10.0 {
+		score = 10.0
+	}
+	if score < 0.0 {
+		score = 0.0
 	}
 
 	return score, signals, rsi, atr, longSignal, shortSignal, srValidation, nil
