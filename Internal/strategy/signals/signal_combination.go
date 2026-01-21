@@ -10,11 +10,12 @@ import (
 
 // Default weights for signal components
 var DefaultSignalWeights = map[string]float64{
-	"RSI":                0.25,
-	"ATR":                0.15,
-	"Whale":              0.30,
-	"Pattern":            0.20,
+	"RSI":                0.20,
+	"ATR":                0.12,
+	"Whale":              0.25,
+	"Pattern":            0.18,
 	"Support/Resistance": 0.10,
+	"Divergence":         0.15,
 }
 
 // Recommendation thresholds - single source of truth
@@ -48,13 +49,12 @@ type CombinedSignal struct {
 	Components     []SignalComponent
 }
 
-// MultiTimeframeSignal represents signals from different timeframes
 type MultiTimeframeSignal struct {
 	DailySignal      CombinedSignal
 	FourHourSignal   CombinedSignal
 	OneHourSignal    CombinedSignal
-	Alignment        bool    // true if signals agree on direction
-	AlignmentPercent float64 // % of timeframes aligned
+	Alignment        bool
+	AlignmentPercent float64
 	CompositeScore   float64
 	Confidence       float64
 	RecommendedTrade string
@@ -145,6 +145,46 @@ func calculateSRScore(bars []types.Bar) float64 {
 	return 0.0
 }
 
+func calculateDivergenceScore(bars []types.Bar, rsiValues []float64) float64 {
+	if len(bars) < 20 || len(rsiValues) < 20 {
+		return 0.0 // Not enough data
+	}
+
+	detector := detection.NewDivergenceDetector()
+
+	// Check for regular divergence
+	regularDiv := detector.DetectRSIDivergence(bars, rsiValues)
+	if regularDiv.Detected {
+		if regularDiv.Type == detection.DivergenceBullish {
+			return 2.5 * (regularDiv.Confidence / 100.0) // Strong buy signal
+		} else if regularDiv.Type == detection.DivergenceBearish {
+			return -2.5 * (regularDiv.Confidence / 100.0) // Strong sell signal
+		}
+	}
+
+	// Check for hidden divergence (trend continuation)
+	hiddenDiv := detector.DetectHiddenDivergence(bars, rsiValues)
+	if hiddenDiv.Detected {
+		if hiddenDiv.Type == detection.DivergenceBullish {
+			return 1.5 * (hiddenDiv.Confidence / 100.0) // Moderate buy signal
+		} else if hiddenDiv.Type == detection.DivergenceBearish {
+			return -1.5 * (hiddenDiv.Confidence / 100.0) // Moderate sell signal
+		}
+	}
+
+	// Check for exaggerated conditions
+	exaggeratedDiv := detector.DetectExaggeratedDivergence(rsiValues)
+	if exaggeratedDiv.Detected {
+		if exaggeratedDiv.Direction == "SHORT" {
+			return -1.0 * (exaggeratedDiv.Confidence / 100.0) // Overbought warning
+		} else if exaggeratedDiv.Direction == "LONG" {
+			return 1.0 * (exaggeratedDiv.Confidence / 100.0) // Oversold opportunity
+		}
+	}
+
+	return 0.0 // No divergence detected
+}
+
 // it converts ensemble score to recommendation and reasoning
 func MapScoreToRecommendation(ensembleScore float64) (recommendation, reasoning string) {
 	if ensembleScore >= BuyThreshold {
@@ -165,6 +205,7 @@ func CalculateSignal(
 	bars []types.Bar,
 	symbol string,
 	analysis string,
+	rsiValues []float64,
 ) CombinedSignal {
 
 	components := []SignalComponent{}
@@ -210,12 +251,24 @@ func CalculateSignal(
 		Weight: DefaultSignalWeights["Support/Resistance"],
 	})
 
+	// Calculate divergence score if enough RSI data is available
+	divergenceScore := 0.0
+	if len(rsiValues) >= 20 {
+		divergenceScore = calculateDivergenceScore(bars, rsiValues)
+		components = append(components, SignalComponent{
+			Name:   "Divergence",
+			Score:  divergenceScore,
+			Weight: DefaultSignalWeights["Divergence"],
+		})
+	}
+
 	// Calculate weighted ensemble score using centralized weights
 	ensembleScore := (rsiScore * DefaultSignalWeights["RSI"]) +
 		(atrScore * DefaultSignalWeights["ATR"]) +
 		(whaleScore * DefaultSignalWeights["Whale"]) +
 		(patternScore * DefaultSignalWeights["Pattern"]) +
-		(srScore * DefaultSignalWeights["Support/Resistance"])
+		(srScore * DefaultSignalWeights["Support/Resistance"]) +
+		(divergenceScore * DefaultSignalWeights["Divergence"])
 
 	// Map to recommendation using centralized function
 	recommendation, reasoning := MapScoreToRecommendation(ensembleScore)
@@ -313,16 +366,12 @@ func CombineMultiTimeframeSignals(daily, fourHour, oneHour CombinedSignal) Multi
 
 	result.AlignmentPercent = (float64(alignedCount) / float64(totalTimeframes)) * 100.0
 
-	// Strong alignment = at least 2 timeframes agree
 	result.Alignment = alignedCount >= 2
 
-	// Calculate composite score: Weight daily heavier for trend confirmation
 	result.CompositeScore = (daily.Score * 0.5) + (fourHour.Score * 0.35) + (oneHour.Score * 0.15)
 
-	// Average confidence
 	result.Confidence = (daily.Confidence + fourHour.Confidence + oneHour.Confidence) / 3.0
 
-	// Determine recommended trade
 	if result.Alignment {
 		if dailyBullish && fourHourBullish {
 			result.RecommendedTrade = "BUY"

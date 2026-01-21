@@ -7,7 +7,6 @@ import (
 	"github.com/fazecat/mogulmaker/Internal/types"
 )
 
-// This defines the type of divergence detected
 type DivergenceType string
 
 const (
@@ -18,28 +17,25 @@ const (
 	DivergenceExaggerated DivergenceType = "EXAGGERATED"
 )
 
-// A detected divergence between price and indicator
 type DivergenceSignal struct {
 	Type                DivergenceType
 	Detected            bool
-	Confidence          float64 // 0-100
-	Direction           string  // "LONG", "SHORT", "NONE"
-	IndicatorName       string  // "RSI", "MACD", "Stochastic", etc.
-	PriceAction         string  // "HIGHER_HIGH", "LOWER_LOW", "LOWER_HIGH", "HIGHER_LOW"
-	IndicatorAction     string  // Same as price
+	Confidence          float64
+	Direction           string
+	IndicatorName       string
+	PriceAction         string
+	IndicatorAction     string
 	Reasoning           string
 	ReversalProbability float64
 	FormationBars       int
 }
 
-// analyzes price and indicator divergence
 type DivergenceDetector struct {
 	MinFormationBars   int
 	VerboseLogging     bool
-	DivergenceLookback int // Number of bars to analyze
+	DivergenceLookback int
 }
 
-// creates a new divergence detector
 func NewDivergenceDetector() *DivergenceDetector {
 	return &DivergenceDetector{
 		MinFormationBars:   3,
@@ -48,21 +44,19 @@ func NewDivergenceDetector() *DivergenceDetector {
 	}
 }
 
-// a price level with its bar index
 type PricePoint struct {
 	Index int
 	Price float64
 }
 
-// an indicator level with its bar index
 type IndicatorPoint struct {
 	Index int
 	Value float64
 }
 
 // This identifies divergence between price and RSI
-// Bullish: Lower lows in price but higher lows in RSI (reversal up expected)
-// Bearish: Higher highs in price but lower highs in RSI (reversal down expected)
+// Bullish: Lower lows in price but higher lows in RSI
+// Bearish: Higher highs in price but lower highs in RSI
 func (dd *DivergenceDetector) DetectRSIDivergence(bars []types.Bar, rsiValues []float64) DivergenceSignal {
 	signal := DivergenceSignal{
 		Type:                DivergenceNone,
@@ -75,8 +69,6 @@ func (dd *DivergenceDetector) DetectRSIDivergence(bars []types.Bar, rsiValues []
 	if len(bars) < dd.MinFormationBars || len(rsiValues) != len(bars) {
 		return signal
 	}
-
-	// Look back N bars
 	lookback := dd.DivergenceLookback
 	if lookback > len(bars) {
 		lookback = len(bars)
@@ -90,11 +82,9 @@ func (dd *DivergenceDetector) DetectRSIDivergence(bars []types.Bar, rsiValues []
 	recentBars := bars[startIdx:]
 	recentRSI := rsiValues[startIdx:]
 
-	// Find local lows and highs in price
-	priceLows := findLocalExtrema(recentBars, true)   // true = lows
-	priceHighs := findLocalExtrema(recentBars, false) // false = highs
+	priceLows := findLocalExtrema(recentBars, true)
+	priceHighs := findLocalExtrema(recentBars, false)
 
-	// Find local lows and highs in RSI
 	rsiLows := findIndicatorExtrema(recentRSI, true)
 	rsiHighs := findIndicatorExtrema(recentRSI, false)
 
@@ -118,7 +108,7 @@ func (dd *DivergenceDetector) DetectRSIDivergence(bars []types.Bar, rsiValues []
 			signal.ReversalProbability = 0.65 + (signal.Confidence / 100 * 0.20) // 65-85%
 
 			if dd.VerboseLogging {
-				fmt.Printf("🟢 Bullish RSI Divergence detected: %.1f%% confidence\n", signal.Confidence)
+				fmt.Printf("Bullish RSI Divergence detected: %.1f%% confidence\n", signal.Confidence)
 			}
 
 			return signal
@@ -145,7 +135,7 @@ func (dd *DivergenceDetector) DetectRSIDivergence(bars []types.Bar, rsiValues []
 			signal.ReversalProbability = 0.65 + (signal.Confidence / 100 * 0.20) // 65-85%
 
 			if dd.VerboseLogging {
-				fmt.Printf("🔴 Bearish RSI Divergence detected: %.1f%% confidence\n", signal.Confidence)
+				fmt.Printf("Bearish RSI Divergence detected: %.1f%% confidence\n", signal.Confidence)
 			}
 
 			return signal
@@ -155,9 +145,9 @@ func (dd *DivergenceDetector) DetectRSIDivergence(bars []types.Bar, rsiValues []
 	return signal
 }
 
-// DetectHiddenDivergence identifies hidden divergence (continuation patterns)
-// Bullish hidden: Higher price lows but lower RSI lows (continuation up)
-// Bearish hidden: Lower price highs but higher RSI highs (continuation down)
+// DetectHiddenDivergence identifies hidden divergence
+// Bullish hidden: Higher price lows but lower RSI lows
+// Bearish hidden: Lower price highs but higher RSI highs
 func (dd *DivergenceDetector) DetectHiddenDivergence(bars []types.Bar, rsiValues []float64) DivergenceSignal {
 	signal := DivergenceSignal{
 		Type:                DivergenceNone,
@@ -209,7 +199,7 @@ func (dd *DivergenceDetector) DetectHiddenDivergence(bars []types.Bar, rsiValues
 			signal.ReversalProbability = 0.55
 
 			if dd.VerboseLogging {
-				fmt.Printf("🟢 Hidden Bullish Divergence detected\n")
+				fmt.Printf("Hidden Bullish Divergence detected\n")
 			}
 
 			return signal
@@ -235,7 +225,7 @@ func (dd *DivergenceDetector) DetectHiddenDivergence(bars []types.Bar, rsiValues
 			signal.ReversalProbability = 0.55
 
 			if dd.VerboseLogging {
-				fmt.Printf("🔴 Hidden Bearish Divergence detected\n")
+				fmt.Printf("Hidden Bearish Divergence detected\n")
 			}
 
 			return signal
@@ -271,7 +261,7 @@ func (dd *DivergenceDetector) DetectExaggeratedDivergence(rsiValues []float64) D
 		signal.ReversalProbability = 0.70
 
 		if dd.VerboseLogging {
-			fmt.Printf("⚠️  Exaggerated overbought condition: RSI %.1f\n", currentRSI)
+			fmt.Printf("Exaggerated overbought condition: RSI %.1f\n", currentRSI)
 		}
 
 		return signal
@@ -287,7 +277,7 @@ func (dd *DivergenceDetector) DetectExaggeratedDivergence(rsiValues []float64) D
 		signal.ReversalProbability = 0.70
 
 		if dd.VerboseLogging {
-			fmt.Printf("⚠️  Exaggerated oversold condition: RSI %.1f\n", currentRSI)
+			fmt.Printf("Exaggerated oversold condition: RSI %.1f\n", currentRSI)
 		}
 
 		return signal
@@ -331,7 +321,6 @@ func findIndicatorExtrema(values []float64, findLows bool) []IndicatorPoint {
 
 	for i := 1; i < len(values)-1; i++ {
 		if findLows {
-			// Find local lows
 			if values[i] < values[i-1] && values[i] < values[i+1] {
 				extrema = append(extrema, IndicatorPoint{Index: i, Value: values[i]})
 			}
@@ -351,10 +340,8 @@ func calculateDivergenceConfidence(price1, price2, indicator1, indicator2 float6
 	priceMagnitude := math.Abs((price2-price1)/price1) * 100
 	indicatorMagnitude := math.Abs((indicator2-indicator1)/100) * 100
 
-	// Larger divergence = higher confidence
 	divergenceMagnitude := (priceMagnitude + indicatorMagnitude) / 2
 
-	// Base confidence: 60% + magnitude bonus (up to 35%)
 	confidence := 60.0 + math.Min(35.0, divergenceMagnitude*2)
 
 	return math.Min(95.0, confidence)
@@ -363,21 +350,14 @@ func calculateDivergenceConfidence(price1, price2, indicator1, indicator2 float6
 // returns a formatted string representation
 func FormatDivergenceSignal(signal DivergenceSignal) string {
 	if !signal.Detected {
-		return "❌ No divergence detected"
+		return "No divergence detected"
 	}
 
-	emoji := "⏸️"
-	if signal.Direction == "LONG" {
-		emoji = "🟢"
-	} else if signal.Direction == "SHORT" {
-		emoji = "🔴"
-	}
-
-	return fmt.Sprintf(`%s %s %s (%.0f%% confidence)
+	return fmt.Sprintf(`%s %s %.0f%% confidence
    Type: %s | Reversal Probability: %.0f%%
    Formation: %d bars
    %s`,
-		emoji, signal.IndicatorName, signal.Type, signal.Confidence,
+		signal.IndicatorName, signal.Type, signal.Confidence,
 		signal.Type, signal.ReversalProbability*100,
 		signal.FormationBars,
 		signal.Reasoning,

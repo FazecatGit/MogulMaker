@@ -33,14 +33,12 @@ var (
 	posManagerMutex  sync.RWMutex
 )
 
-// stores the position manager for alerts
 func SetGlobalPositionManager(pm *positionPkg.PositionManager) {
 	posManagerMutex.Lock()
 	defer posManagerMutex.Unlock()
 	globalPosManager = pm
 }
 
-// retrieves the position manager
 func GetGlobalPositionManager() *positionPkg.PositionManager {
 	posManagerMutex.RLock()
 	defer posManagerMutex.RUnlock()
@@ -60,11 +58,11 @@ func ClearInputBuffer() {
 
 func HandleScan(ctx context.Context, cfg *config.Config, q *database.Queries) {
 	if len(cfg.Profiles) == 0 {
-		fmt.Println("❌ No profiles configured")
+		fmt.Println("No profiles configured")
 		return
 	}
 
-	fmt.Println("\n📋 Available Profiles:")
+	fmt.Println("\nAvailable Profiles:")
 	profiles := make([]string, 0)
 	for name := range cfg.Profiles {
 		profiles = append(profiles, name)
@@ -72,9 +70,9 @@ func HandleScan(ctx context.Context, cfg *config.Config, q *database.Queries) {
 
 	for i, profileName := range profiles {
 		profile := cfg.Profiles[profileName]
-		shortSignalsAvail := "❌"
+		shortSignalsAvail := "No"
 		if cfg.Features.EnableShortSignals {
-			shortSignalsAvail = "✅"
+			shortSignalsAvail = "Yes"
 		}
 		fmt.Printf("%d. %s (scan: %d days, short signals: %s)\n", i+1, profileName, profile.ScanIntervalDays, shortSignalsAvail)
 	}
@@ -83,20 +81,20 @@ func HandleScan(ctx context.Context, cfg *config.Config, q *database.Queries) {
 	var choice int
 	_, err := fmt.Scanln(&choice)
 	if err != nil || choice < 1 || choice > len(profiles) {
-		fmt.Println("❌ Invalid selection")
+		fmt.Println("Invalid selection")
 		return
 	}
 
 	selectedProfile := profiles[choice-1]
 
-	fmt.Printf("🔄 Scanning profile: %s\n", selectedProfile)
+	fmt.Printf("Scanning profile: %s\n", selectedProfile)
 	scannedCount, err := scanner.PerformScan(ctx, selectedProfile, cfg, q)
 	if err != nil {
-		fmt.Printf("❌ Scan failed: %v\n", err)
+		fmt.Printf("Scan failed: %v\n", err)
 		return
 	}
 
-	fmt.Printf("✅ Scan complete! Updated %d symbols\n", scannedCount)
+	fmt.Printf("Scan complete! Updated %d symbols\n", scannedCount)
 }
 
 func HandleAnalyzeSingle(ctx context.Context, assetType string, q *database.Queries, newsStorage *newsscraping.NewsStorage, finnhubClient *newsscraping.FinnhubClient) {
@@ -116,27 +114,27 @@ func HandleAnalyzeSingle(ctx context.Context, assetType string, q *database.Quer
 	var symbol string
 	_, err := fmt.Scanln(&symbol)
 	if err != nil || symbol == "" {
-		fmt.Println("❌ Invalid symbol")
+		fmt.Println("Invalid symbol")
 		return
 	}
 
 	// Fetch and store news for stocks (not crypto)
 	if assetType == "stock" && finnhubClient != nil && newsStorage != nil {
-		fmt.Println("📰 Fetching latest news...")
+		fmt.Println("Fetching latest news...")
 		newsArticles, err := finnhubClient.FetchNews(symbol, 5)
 		if err == nil && len(newsArticles) > 0 {
 			for _, article := range newsArticles {
 				_ = newsStorage.SaveArticle(ctx, article)
 			}
-			log.Printf("✅ Saved %d news articles for %s", len(newsArticles), symbol)
+			log.Printf("Saved %d news articles for %s", len(newsArticles), symbol)
 		} else if err != nil {
-			log.Printf("⚠️  Could not fetch news: %v", err)
+			log.Printf("Could not fetch news: %v", err)
 		}
 	}
 
 	timeframe, err := interactive.ShowTimeframeMenu()
 	if err != nil {
-		fmt.Println("❌ Invalid timeframe")
+		fmt.Println("Invalid timeframe")
 		return
 	}
 
@@ -149,19 +147,19 @@ func HandleAnalyzeSingle(ctx context.Context, assetType string, q *database.Quer
 
 	bars, err := interactive.FetchMarketDataWithType(symbol, timeframe, numBars, "", assetType)
 	if err != nil {
-		fmt.Printf("❌ Failed to fetch data: %v\n", err)
+		fmt.Printf("Failed to fetch data: %v\n", err)
 		return
 	}
 
 	err = datafeed.CalculateAndStoreRSI(symbol, bars)
 	if err != nil {
-		fmt.Printf("❌ Failed to calculate and store RSI: %v\n", err)
+		fmt.Printf("Failed to calculate and store RSI: %v\n", err)
 		return
 	}
 
 	err = datafeed.CalculateAndStoreATR(symbol, bars)
 	if err != nil {
-		fmt.Printf("❌ Failed to calculate and store ATR: %v\n", err)
+		fmt.Printf("Failed to calculate and store ATR: %v\n", err)
 		return
 	}
 
@@ -189,16 +187,16 @@ func HandleAnalyzeSingle(ctx context.Context, assetType string, q *database.Quer
 func HandleWatchlist(ctx context.Context, q *database.Queries) {
 	watchlist, err := q.GetWatchlist(ctx)
 	if err != nil {
-		fmt.Printf("❌ Failed to fetch watchlist: %v\n", err)
+		fmt.Printf("Failed to fetch watchlist: %v\n", err)
 		return
 	}
 
 	if len(watchlist) == 0 {
-		fmt.Println("📭 Watchlist is empty")
+		fmt.Println("Watchlist is empty")
 		return
 	}
 
-	fmt.Println("\n📊 Current Watchlist:")
+	fmt.Println("\nCurrent Watchlist:")
 	fmt.Println("Symbol | Score | Added Date | Last Updated | Category")
 	fmt.Println("-------|-------|------------|--------------|---------")
 	for _, item := range watchlist {
@@ -216,7 +214,7 @@ func HandleWatchlist(ctx context.Context, q *database.Queries) {
 
 func HandleScout(ctx context.Context, cfg *config.Config, q *database.Queries, newsStorage *newsscraping.NewsStorage, finnhubClient *newsscraping.FinnhubClient) {
 	if len(cfg.Profiles) == 0 {
-		fmt.Println("❌ No profiles configured")
+		fmt.Println("No profiles configured")
 		return
 	}
 
@@ -225,7 +223,7 @@ func HandleScout(ctx context.Context, cfg *config.Config, q *database.Queries, n
 		profiles = append(profiles, name)
 	}
 
-	fmt.Println("\n📋 Available Profiles:")
+	fmt.Println("\nAvailable Profiles:")
 	for i, profileName := range profiles {
 		profile := cfg.Profiles[profileName]
 		fmt.Printf("%d. %s (scan interval: %d days, default threshold: %.1f)\n", i+1, profileName, profile.ScanIntervalDays, profile.Threshold)
@@ -235,7 +233,7 @@ func HandleScout(ctx context.Context, cfg *config.Config, q *database.Queries, n
 	var choice int
 	_, err := fmt.Scanln(&choice)
 	if err != nil || choice < 1 || choice > len(profiles) {
-		fmt.Println("❌ Invalid selection")
+		fmt.Println("Invalid selection")
 		return
 	}
 
@@ -245,16 +243,16 @@ func HandleScout(ctx context.Context, cfg *config.Config, q *database.Queries, n
 	fmt.Print("Enter score threshold (0.0 - 10.0): ")
 	_, err = fmt.Scanln(&minScore)
 	if err != nil || minScore < 0 || minScore > 10 {
-		fmt.Println("❌ Invalid threshold. Must be between 0.0 and 10.0")
+		fmt.Println("Invalid threshold. Must be between 0.0 and 10.0")
 		return
 	}
 
-	fmt.Printf("\n✅ Using %s profile with threshold: %.1f\n", selectedProfile, minScore)
+	fmt.Printf("\nUsing %s profile with threshold: %.1f\n", selectedProfile, minScore)
 
 	// Asset type selection
 	assetType := "stock"
 	if cfg.Features.CryptoSupport {
-		fmt.Println("\n🪙 Asset Type:")
+		fmt.Println("\nAsset Type:")
 		fmt.Println("1. Stocks")
 		fmt.Println("2. Crypto")
 		fmt.Print("Select asset type (1-2): ")
@@ -264,7 +262,7 @@ func HandleScout(ctx context.Context, cfg *config.Config, q *database.Queries, n
 			assetType = "crypto"
 		}
 	}
-	fmt.Printf("🔍 Scanning %s assets\n", assetType)
+	fmt.Printf("Scanning %s assets\n", assetType)
 
 	var batchSize int
 	fmt.Print("Review every N symbols (50 or 100): ")
@@ -277,22 +275,22 @@ func HandleScout(ctx context.Context, cfg *config.Config, q *database.Queries, n
 	batchNum := 1
 
 	for {
-		fmt.Printf("\n🔄 Scanning batch %d (evaluating %d symbols)...\n", batchNum, batchSize)
+		fmt.Printf("\nScanning batch %d (evaluating %d symbols)...\n", batchNum, batchSize)
 		candidates, totalSymbols, err := scanner.PerformProfileScan(ctx, selectedProfile, minScore, offset, batchSize, cfg)
 		if err != nil {
-			fmt.Printf("❌ Scout scan failed: %v\n", err)
+			fmt.Printf("Scout scan failed: %v\n", err)
 			return
 		}
 
 		if offset >= totalSymbols {
-			fmt.Println("✅ Scout scan complete - all symbols evaluated")
+			fmt.Println("Scout scan complete - all symbols evaluated")
 			break
 		}
 
 		if len(candidates) == 0 {
-			fmt.Printf("📭 No candidates found in this batch (evaluated %d-%d of %d symbols)\n", offset+1, offset+batchSize, totalSymbols)
+			fmt.Printf("No candidates found in this batch (evaluated %d-%d of %d symbols)\n", offset+1, offset+batchSize, totalSymbols)
 		} else {
-			fmt.Printf("\n📊 Batch %d candidates (%d of %d total symbols evaluated):\n", batchNum, offset+batchSize, totalSymbols)
+			fmt.Printf("\nBatch %d candidates (%d of %d total symbols evaluated):\n", batchNum, offset+batchSize, totalSymbols)
 
 			for _, candidate := range candidates {
 				fmt.Printf("\n   %s\n", candidate.Symbol)
@@ -317,9 +315,9 @@ func HandleScout(ctx context.Context, cfg *config.Config, q *database.Queries, n
 						reason := fmt.Sprintf("Scouted - Pattern: %s", candidate.Analysis)
 						_, err := watchlist.AddToWatchlist(ctx, q, candidate.Symbol, "stock", candidate.Score, reason)
 						if err != nil {
-							fmt.Printf("      ❌ Failed to add: %v\n", err)
+							fmt.Printf("      Failed to add: %v\n", err)
 						} else {
-							fmt.Printf("      ✅ Added %s to watchlist (Score: %.2f)\n", candidate.Symbol, candidate.Score)
+							fmt.Printf("      Added %s to watchlist (Score: %.2f)\n", candidate.Symbol, candidate.Score)
 						}
 						break
 					}
@@ -335,19 +333,19 @@ func HandleScout(ctx context.Context, cfg *config.Config, q *database.Queries, n
 							},
 						})
 						if err != nil {
-							fmt.Printf("      ❌ Failed to ignore: %v\n", err)
+							fmt.Printf("      Failed to ignore: %v\n", err)
 						} else {
-							fmt.Printf("      ⏭️ Skipping %s for 2 days\n", candidate.Symbol)
+							fmt.Printf("      Skipping %s for 2 days\n", candidate.Symbol)
 						}
 						break
 					}
 
 					if choice == "n" {
-						fmt.Printf("      ⏭️ Skipped %s\n", candidate.Symbol)
+						fmt.Printf("      Skipped %s\n", candidate.Symbol)
 						break
 					}
 
-					fmt.Println("      ❌ Invalid choice. Try again.")
+					fmt.Println("      Invalid choice. Try again.")
 				}
 			}
 		}
@@ -355,12 +353,12 @@ func HandleScout(ctx context.Context, cfg *config.Config, q *database.Queries, n
 		nextOffset := offset + batchSize
 		if nextOffset < totalSymbols {
 			ClearInputBuffer()
-			fmt.Print("\n⏸️  Continue scanning next batch? (y to continue, or press Enter to stop): ")
+			fmt.Print("\nContinue scanning next batch? (y to continue, or press Enter to stop): ")
 			var continueChoice string
 			fmt.Scanln(&continueChoice)
 			continueChoice = strings.ToLower(continueChoice)
 			if continueChoice != "y" {
-				fmt.Println("⏹️ Scout review stopped")
+				fmt.Println("Scout review stopped")
 				break
 			}
 		}
@@ -379,19 +377,19 @@ func HandleExecuteTrades(ctx context.Context, cfg *config.Config, q *database.Qu
 
 	separator := "============================================================"
 	fmt.Println("\n" + separator)
-	fmt.Println("🚀 LIVE TRADE EXECUTION")
+	fmt.Println("LIVE TRADE EXECUTION")
 	fmt.Println(separator)
 
 	// Get account info
 	account, err := client.GetAccount()
 	if err != nil {
-		fmt.Printf("❌ Failed to get account info: %v\n", err)
+		fmt.Printf("Failed to get account info: %v\n", err)
 		return
 	}
 
 	accountValueFloat, _ := account.Equity.Float64()
 	accountValue := accountValueFloat
-	fmt.Printf("💰 Account Balance: $%.2f\n", accountValue)
+	fmt.Printf("Account Balance: $%.2f\n", accountValue)
 
 	// Create position manager with safety limits
 	orderConfig := &strategy.OrderConfig{
@@ -409,12 +407,11 @@ func HandleExecuteTrades(ctx context.Context, cfg *config.Config, q *database.Qu
 	// Store globally so menu can access alerts
 	SetGlobalPositionManager(posManager)
 
-	// Get user input
 	fmt.Print("\nEnter symbol to trade (e.g., AAPL): ")
 	var symbol string
 	_, err = fmt.Scanln(&symbol)
 	if err != nil || symbol == "" {
-		fmt.Println("❌ Invalid symbol")
+		fmt.Println("Invalid symbol")
 		return
 	}
 
@@ -422,12 +419,12 @@ func HandleExecuteTrades(ctx context.Context, cfg *config.Config, q *database.Qu
 	var direction string
 	_, err = fmt.Scanln(&direction)
 	if err != nil {
-		fmt.Println("❌ Invalid direction")
+		fmt.Println("Invalid direction")
 		return
 	}
 
 	if direction != "LONG" && direction != "SHORT" {
-		fmt.Println("❌ Direction must be LONG or SHORT")
+		fmt.Println("Direction must be LONG or SHORT")
 		return
 	}
 
@@ -435,20 +432,19 @@ func HandleExecuteTrades(ctx context.Context, cfg *config.Config, q *database.Qu
 	var quantity int64
 	_, err = fmt.Scanln(&quantity)
 	if err != nil || quantity < 0 {
-		fmt.Println("❌ Invalid quantity")
+		fmt.Println("Invalid quantity")
 		return
 	}
 
-	// Fetch current market data
-	fmt.Println("\n📊 Fetching market data...")
+	fmt.Println("\nFetching market data...")
 	bars, err := interactive.FetchMarketDataWithType(symbol, "1Day", 100, "", "stock")
 	if err != nil {
-		fmt.Printf("❌ Failed to fetch data: %v\n", err)
+		fmt.Printf("Failed to fetch data: %v\n", err)
 		return
 	}
 
 	if len(bars) == 0 {
-		fmt.Println("❌ No market data available")
+		fmt.Println("No market data available")
 		return
 	}
 
@@ -491,7 +487,7 @@ func HandleExecuteTrades(ctx context.Context, cfg *config.Config, q *database.Qu
 	validation := strategy.ValidateOrder(orderReq, orderConfig, accountValue, openPositions, dailyLoss)
 
 	if !validation.IsValid {
-		fmt.Println("❌ ORDER VALIDATION FAILED:")
+		fmt.Println("ORDER VALIDATION FAILED:")
 		for _, issue := range validation.Issues {
 			fmt.Printf("   • %s\n", issue)
 		}
@@ -500,7 +496,7 @@ func HandleExecuteTrades(ctx context.Context, cfg *config.Config, q *database.Qu
 
 	// Display order preview
 	fmt.Println("\n" + separator)
-	fmt.Println("📋 ORDER PREVIEW")
+	fmt.Println("ORDER PREVIEW")
 	fmt.Println(separator)
 	fmt.Printf("Symbol:              %s\n", orderReq.Symbol)
 	fmt.Printf("Direction:           %s\n", orderReq.Direction)
@@ -631,7 +627,7 @@ func HandleTradeHistory(ctx context.Context, cfg *config.Config, q *database.Que
 					endIndex = totalTrades
 				}
 
-				fmt.Printf("\n📊 Open Trades (Showing %d of %d):\n", endIndex, totalTrades)
+				fmt.Printf("\nOpen Trades (Showing %d of %d):\n", endIndex, totalTrades)
 				for i := 0; i < endIndex; i++ {
 					trade := trades[i]
 					fmt.Printf("  %s | %s x %s @ %s | Status: %s\n",
@@ -702,7 +698,7 @@ func HandleTradeHistory(ctx context.Context, cfg *config.Config, q *database.Que
 
 				displayCount += 10
 			} else {
-				fmt.Printf("\n✅ All %d trades displayed\n", totalTrades)
+				fmt.Printf("\nAll %d trades displayed\n", totalTrades)
 				break
 			}
 		}
@@ -770,9 +766,8 @@ func HandleAnalyzeAssetType(ctx context.Context, cfg *config.Config, q *database
 	}
 }
 
-// HandleDisplayRiskManager shows the portfolio risk report
 func HandleDisplayRiskManager(riskManager interface{}, positionManager interface{}) {
-	// Use type assertion directly instead of reflection
+
 	rm, ok := riskManager.(*risk.Manager)
 	if !ok || rm == nil {
 		fmt.Println("Risk Manager not available yet")
@@ -782,7 +777,6 @@ func HandleDisplayRiskManager(riskManager interface{}, positionManager interface
 	// Get open positions from position manager
 	var positions []*positionPkg.OpenPosition
 	if pm, ok := positionManager.(*positionPkg.PositionManager); ok && pm != nil {
-		// Sync with Alpaca first
 		ctx := context.Background()
 		if err := pm.SyncFromAlpaca(ctx); err != nil {
 			fmt.Printf("Could not sync positions: %v\n", err)

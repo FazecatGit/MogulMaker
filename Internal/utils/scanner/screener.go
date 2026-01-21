@@ -129,7 +129,6 @@ func scoreStockWithType(symbol, timeframe string, numBars int, criteria Screener
 	avgVol20 := utils.CalculateAvgVolume(volumes, 20)
 
 	// WEIGHTED SCORING SYSTEM (0-10 scale)
-	// RSI: 20%, Volume: 15%, S/R: 15%, Signal Quality: 20%, Patterns: 10%, Volatility: 10%, Whales: 5%, News: 5%
 	score = 0.0
 	signals = []string{}
 
@@ -211,12 +210,12 @@ func scoreStockWithType(symbol, timeframe string, numBars int, criteria Screener
 			switch pattern.Direction {
 			case "LONG":
 				patternScore += (pattern.Confidence / 100.0) * 0.5 // Max 0.5 per pattern
-				signals = append(signals, fmt.Sprintf("📈 %s [%.0f%% confidence]", pattern.Pattern, pattern.Confidence))
+				signals = append(signals, fmt.Sprintf("UP%s [%.0f%% confidence]", pattern.Pattern, pattern.Confidence))
 			case "SHORT":
 				patternScore += (pattern.Confidence / 100.0) * 0.3 // Max 0.3 per pattern
-				signals = append(signals, fmt.Sprintf("📉 %s [%.0f%% confidence]", pattern.Pattern, pattern.Confidence))
+				signals = append(signals, fmt.Sprintf("DOWN%s [%.0f%% confidence]", pattern.Pattern, pattern.Confidence))
 			case "NONE":
-				signals = append(signals, fmt.Sprintf("⏸️  %s [%.0f%% confidence]", pattern.Pattern, pattern.Confidence))
+				signals = append(signals, fmt.Sprintf("NEUTRAL %s [%.0f%% confidence]", pattern.Pattern, pattern.Confidence))
 			}
 		}
 	}
@@ -239,8 +238,18 @@ func scoreStockWithType(symbol, timeframe string, numBars int, criteria Screener
 		signals = append(signals, fmt.Sprintf("Near Resistance: $%.2f", resistance))
 	}
 
+	// Calculate RSI values array for divergence detection
+	closes := make([]float64, len(bars))
+	for i, bar := range bars {
+		closes[i] = bar.Close
+	}
+	rsiValues, err := indicators.CalculateRSI(closes, 14)
+	if err != nil {
+		rsiValues = []float64{} // Use empty array if calculation fails
+	}
+
 	// Signal Quality Score (0-2.0 points = 20% weight)
-	combinedSignal := signalsPkg.CalculateSignal(rsi, atr, bars, symbol, "")
+	combinedSignal := signalsPkg.CalculateSignal(rsi, atr, bars, symbol, "", rsiValues)
 	filter := signalsPkg.NewSignalQualityFilter()
 	filter.MinConfidenceThreshold = 65.0
 	filter.VerboseLogging = false

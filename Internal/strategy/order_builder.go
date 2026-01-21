@@ -8,39 +8,36 @@ import (
 	"github.com/shopspring/decimal"
 )
 
-// OrderConfig defines risk parameters for order execution
 type OrderConfig struct {
-	MaxPortfolioPercent   float64 // Max % of account per trade (default 20%)
-	MaxOpenPositions      int     // Max concurrent open trades (default 5)
-	StopLossPercent       float64 // Stop loss % below entry (default 2%)
-	TakeProfitPercent     float64 // Take profit % above entry (default 5%)
-	SafeBailPercent       float64 // Bail out at this profit % (default 3%)
-	MaxDailyLossPercent   float64 // Stop all trades if daily loss exceeds this (default -2%)
-	PartialExitPercentage float64 // Exit this % of position at take-profit (default 0.5 = 50%)
+	MaxPortfolioPercent   float64 //(default 20%)
+	MaxOpenPositions      int     //(default 5)
+	StopLossPercent       float64 // (default 2%)
+	TakeProfitPercent     float64 //(default 5%)
+	SafeBailPercent       float64 //(default 3%)
+	MaxDailyLossPercent   float64 //(default -2%)
+	PartialExitPercentage float64 //(default 0.5 = 50%)
 }
 
-// OrderRequest encapsulates all order parameters
 type OrderRequest struct {
-	Symbol           string  // Stock symbol (e.g., "AAPL")
-	Quantity         int64   // Number of shares
-	Direction        string  // "LONG" or "SHORT"
-	SignalConfidence float64 // 0-100 confidence score
-	TradeReason      string  // Why this trade was triggered
-	StopLossPrice    float64 // Hard stop loss level
-	TakeProfitPrice  float64 // Target profit level
-	EntryPrice       float64 // Entry price (from market data)
-	UseStopOrder     bool    // Use stop-loss order instead of manual stop
-	UseLimitOrder    bool    // Use limit order instead of market
-	LimitPrice       float64 // Limit price if UseLimitOrder is true
+	Symbol           string
+	Quantity         int64
+	Direction        string
+	SignalConfidence float64
+	TradeReason      string
+	StopLossPrice    float64
+	TakeProfitPrice  float64
+	EntryPrice       float64
+	UseStopOrder     bool
+	UseLimitOrder    bool
+	LimitPrice       float64
 }
 
-// OrderValidation contains validation results
 type OrderValidation struct {
 	IsValid       bool
-	Quantity      int64   // Validated quantity
-	RiskAmount    float64 // Dollar amount at risk
-	PotentialGain float64 // Dollar amount potential gain
-	PortfolioRisk float64 // % of portfolio at risk
+	Quantity      int64
+	RiskAmount    float64
+	PotentialGain float64
+	PortfolioRisk float64
 	Issues        []string
 }
 
@@ -132,7 +129,7 @@ func ValidateOrder(req *OrderRequest, cfg *OrderConfig, accountValue float64, op
 	return validation
 }
 
-// BuildPlaceOrderRequest converts OrderRequest to Alpaca PlaceOrderRequest
+// This function converts OrderRequest to Alpaca PlaceOrderRequest
 func BuildPlaceOrderRequest(req *OrderRequest) (*alpaca.PlaceOrderRequest, error) {
 	if req == nil {
 		return nil, fmt.Errorf("order request is nil")
@@ -160,7 +157,6 @@ func BuildPlaceOrderRequest(req *OrderRequest) (*alpaca.PlaceOrderRequest, error
 
 	*placeOrderReq.Qty = decimal.NewFromInt(req.Quantity)
 
-	// Add limit price if using limit order
 	if req.UseLimitOrder {
 		limitPrice := decimal.NewFromFloat(req.LimitPrice)
 		placeOrderReq.LimitPrice = &limitPrice
@@ -169,33 +165,29 @@ func BuildPlaceOrderRequest(req *OrderRequest) (*alpaca.PlaceOrderRequest, error
 	return placeOrderReq, nil
 }
 
-// CalculatePositionSize determines safe quantity based on account size and risk
+// checks safe quantity based on account size and risk
 func CalculatePositionSize(accountValue float64, entryPrice float64, stopLossPrice float64,
 	maxRiskPercent float64, cfg *OrderConfig) int64 {
 
-	// Calculate risk per share
 	riskPerShare := entryPrice - stopLossPrice
 	if riskPerShare < 0 {
-		riskPerShare = -riskPerShare // Absolute value
+		riskPerShare = -riskPerShare
 	}
 
-	// Calculate max risk in dollars
 	maxRiskDollars := (maxRiskPercent / 100) * accountValue
 
-	// Calculate position size
 	positionSize := int64(maxRiskDollars / riskPerShare)
 
-	// Floor at 1 share minimum
 	if positionSize < 1 {
 		positionSize = 1
 	}
 
-	// Verify it doesn't exceed portfolio % limit
+	// Verify it doesn't exceed portfolio percent limit
 	totalRisk := float64(positionSize) * riskPerShare
 	portfolioRiskPercent := (totalRisk / accountValue) * 100
 
 	if portfolioRiskPercent > cfg.MaxPortfolioPercent {
-		// Recalculate with max portfolio %
+		// Recalculate with max portfolio percent
 		maxRiskDollars = (cfg.MaxPortfolioPercent / 100) * accountValue
 		positionSize = int64(maxRiskDollars / riskPerShare)
 	}
@@ -203,7 +195,7 @@ func CalculatePositionSize(accountValue float64, entryPrice float64, stopLossPri
 	return positionSize
 }
 
-// CalculatePriceTargets computes stop loss and take profit levels
+// computes stop loss and take profit levels
 func CalculatePriceTargets(entryPrice float64, direction string, cfg *OrderConfig) (stopLoss float64, takeProfit float64) {
 	if direction == "LONG" {
 		stopLoss = entryPrice * (1 - (cfg.StopLossPercent / 100))
@@ -215,7 +207,6 @@ func CalculatePriceTargets(entryPrice float64, direction string, cfg *OrderConfi
 	return
 }
 
-// LogOrderExecution logs order details for tracking
 func LogOrderExecution(req *OrderRequest, validation *OrderValidation, orderId string) {
 	log.Printf("========== ORDER EXECUTED ==========\n")
 	log.Printf("Symbol: %s | Direction: %s | Qty: %d\n", req.Symbol, req.Direction, req.Quantity)

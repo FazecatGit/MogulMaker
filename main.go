@@ -64,25 +64,22 @@ func main() {
 
 	cfg, _ := config.LoadConfig()
 	status, isOpen := utils.CheckMarketStatus(time.Now(), cfg)
-	fmt.Printf("📊 Market Status: %s (Open: %v)\n\n", status, isOpen)
+	fmt.Printf("Market Status: %s (Open: %v)\n\n", status, isOpen)
 
-	// Get account balance for risk manager
 	account, err := alpclient.GetAccount()
 	if err != nil {
 		log.Printf("Warning: Could not fetch account for risk manager: %v\n", err)
 	}
 
-	// Initialize Risk Manager
 	var riskMgr *risk.Manager
 	if account != nil {
 		accountEquity, _ := account.Equity.Float64()
 		riskMgr = risk.NewManager(alpclient, accountEquity)
-		log.Println("✅ Risk Manager initialized")
+		log.Println("Risk Manager initialized")
 	} else {
-		log.Println("⚠️  Risk Manager could not be initialized - account data unavailable")
+		log.Println("Risk Manager could not be initialized - account data unavailable")
 	}
 
-	// Initialize Position Manager for Trade Monitor
 	orderConfig := &strategy.OrderConfig{
 		MaxOpenPositions:      5,
 		MaxPortfolioPercent:   20.0,
@@ -94,14 +91,11 @@ func main() {
 	}
 	posManager := position.NewPositionManager(alpclient, orderConfig)
 
-	// Initialize Trade Monitor
 	tradeMon := monitoring.NewMonitor(posManager, riskMgr, datafeed.Queries)
-	log.Println("✅ Trade Monitor initialized")
+	log.Println("Trade Monitor initialized")
 
-	// Load historical trades from database
-	log.Println("📌 Previous trades loaded from database")
+	log.Println("Previous trades loaded from database")
 
-	// for the scouting feature
 	err = datafeed.InitAlpacaClient()
 	if err != nil {
 		log.Printf("Warning: Alpaca client initialization failed: %v\n", err)
@@ -109,13 +103,12 @@ func main() {
 
 	finnhubClient := newsscraping.NewFinnhubClient()
 	newsStorage := newsscraping.NewNewsStorage(datafeed.Queries)
-	log.Println("✅ News scraping initialized")
+	log.Println("News scraping initialized")
 
 	ctx := context.Background()
 	go startBackgroundScanner(ctx, cfg)
 
 	for {
-		// Show alerts if there are open positions
 		if pm := handlers.GetGlobalPositionManager(); pm != nil {
 			pm.CheckMenuAlerts()
 		}

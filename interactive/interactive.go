@@ -129,9 +129,9 @@ func FetchMultiTimeframeSignals(symbol string, assetType string) (*signals.Multi
 	oneHourAnalysis := oneHourResults["Analysis"]
 
 	// Generate signals for each timeframe
-	dailySignal := signals.CalculateSignal(&dailyRSI, &dailyATR, dailyBars, symbol, dailyAnalysis)
-	fourHourSignal := signals.CalculateSignal(&fourHourRSI, &fourHourATR, fourHourBars, symbol, fourHourAnalysis)
-	oneHourSignal := signals.CalculateSignal(&oneHourRSI, &oneHourATR, oneHourBars, symbol, oneHourAnalysis)
+	dailySignal := signals.CalculateSignal(&dailyRSI, &dailyATR, dailyBars, symbol, dailyAnalysis, dailyRSIValues)
+	fourHourSignal := signals.CalculateSignal(&fourHourRSI, &fourHourATR, fourHourBars, symbol, fourHourAnalysis, fourHourRSIValues)
+	oneHourSignal := signals.CalculateSignal(&oneHourRSI, &oneHourATR, oneHourBars, symbol, oneHourAnalysis, oneHourRSIValues)
 
 	// Combine multi-timeframe signals
 	multiSignal := signals.CombineMultiTimeframeSignals(dailySignal, fourHourSignal, oneHourSignal)
@@ -502,14 +502,14 @@ func displayPatternSignals(bars []datafeed.Bar, symbol string) {
 	}
 
 	fmt.Println("\n═══════════════════════════════════════════════════════════════════════════════════")
-	fmt.Println("📊 CHART PATTERN ANALYSIS")
+	fmt.Println("CHART PATTERN ANALYSIS")
 	fmt.Println("═══════════════════════════════════════════════════════════════════════════════════")
 
 	directionIcon := "⏸️ "
 	if bestPattern.Direction == "LONG" {
-		directionIcon = "📈"
+		directionIcon = "UP"
 	} else if bestPattern.Direction == "SHORT" {
-		directionIcon = "📉"
+		directionIcon = "DOWN"
 	}
 
 	fmt.Printf("%s PRIMARY PATTERN: %s\n", directionIcon, bestPattern.Pattern)
@@ -529,9 +529,9 @@ func displayPatternSignals(bars []datafeed.Bar, symbol string) {
 	// Show count of other detected patterns
 	otherCount := len(bullishPatterns) + len(bearishPatterns) + len(neutralPatterns) - 1
 	if otherCount > 0 {
-		fmt.Printf("\n   ℹ️  Note: %d other pattern(s) detected but showing highest confidence\n", otherCount)
+		fmt.Printf("\n   Note: %d other pattern(s) detected but showing highest confidence\n", otherCount)
 		if len(bullishPatterns) > 0 && len(bearishPatterns) > 0 {
-			fmt.Printf("   ⚠️  Mixed signals: %d bullish, %d bearish patterns found\n", len(bullishPatterns), len(bearishPatterns))
+			fmt.Printf("   Mixed signals: %d bullish, %d bearish patterns found\n", len(bullishPatterns), len(bearishPatterns))
 		}
 	}
 
@@ -543,7 +543,17 @@ func displayFinalSignal(bars []datafeed.Bar, symbol string, analysis string, rsi
 		return
 	}
 
-	signal := signals.CalculateSignal(rsi, atr, bars, symbol, analysis)
+	// Calculate RSI values array for divergence detection
+	closes := make([]float64, len(bars))
+	for i, bar := range bars {
+		closes[i] = bar.Close
+	}
+	rsiValues, err := indicators.CalculateRSI(closes, 14)
+	if err != nil {
+		rsiValues = []float64{} // Use empty array if calculation fails
+	}
+
+	signal := signals.CalculateSignal(rsi, atr, bars, symbol, analysis, rsiValues)
 	filter := signals.NewSignalQualityFilter()
 	filter.MinConfidenceThreshold = 70.0
 	filter.VerboseLogging = true
@@ -556,7 +566,6 @@ func displayFinalSignal(bars []datafeed.Bar, symbol string, analysis string, rsi
 
 	recommendationStr := signals.FormatSignal(signal)
 
-	// Display filtering results
 	if filteredResult.Passed {
 		fmt.Printf("[FINAL] RECOMMENDATION: %s \n", recommendationStr)
 		fmt.Printf("[PASS] Signal Quality: %.1f%% - %s\n", filteredResult.QualityScore, filteredResult.RecommendedAction)
@@ -598,7 +607,6 @@ func displayFinalSignal(bars []datafeed.Bar, symbol string, analysis string, rsi
 			component.Weight*100)
 	}
 
-	// Add Multi-Timeframe Analysis
 	fmt.Println("═══════════════════════════════════════════════════════════════════════════════════")
 	fmt.Println(" MULTI-TIMEFRAME ANALYSIS")
 	fmt.Println("═══════════════════════════════════════════════════════════════════════════════════")
@@ -610,7 +618,6 @@ func displayFinalSignal(bars []datafeed.Bar, symbol string, analysis string, rsi
 		// Display multi-timeframe analysis
 		fmt.Print(signals.FormatMultiTimeframeSignal(*multiSignal))
 
-		// Check if multi-timeframe confirms the signal
 		if multiSignal.IsMultiTimeframeConfirmed(true) {
 			fmt.Println("[STRONG] CONFIRMATION: Multiple timeframes aligned!")
 			fmt.Println("   This signal has high probability of success.")
@@ -630,7 +637,6 @@ func displayWhaleEventsInline(symbol string, queries *sqlc.Queries) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	// Fetch recent whale events
 	whales, err := datafeed.GetRecentWhales(ctx, queries, symbol, 10)
 	if err != nil {
 		fmt.Printf("[WARNING] Could not fetch whale events: %v\n", err)
