@@ -607,6 +607,11 @@ func displayFinalSignal(bars []datafeed.Bar, symbol string, analysis string, rsi
 			component.Weight*100)
 	}
 
+	if signal.DivergenceDetails != "" {
+		fmt.Println("\nDIVERGENCE DETECTED:")
+		fmt.Printf("   %s\n", signal.DivergenceDetails)
+	}
+
 	fmt.Println("═══════════════════════════════════════════════════════════════════════════════════")
 	fmt.Println(" MULTI-TIMEFRAME ANALYSIS")
 	fmt.Println("═══════════════════════════════════════════════════════════════════════════════════")

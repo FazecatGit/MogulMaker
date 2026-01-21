@@ -245,7 +245,7 @@ func scoreStockWithType(symbol, timeframe string, numBars int, criteria Screener
 	}
 	rsiValues, err := indicators.CalculateRSI(closes, 14)
 	if err != nil {
-		rsiValues = []float64{} // Use empty array if calculation fails
+		rsiValues = []float64{}
 	}
 
 	// Signal Quality Score (0-2.0 points = 20% weight)

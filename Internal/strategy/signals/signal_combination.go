@@ -42,11 +42,12 @@ type SignalComponent struct {
 }
 
 type CombinedSignal struct {
-	Recommendation string
-	Score          float64
-	Confidence     float64
-	Reasoning      string
-	Components     []SignalComponent
+	Recommendation    string
+	Score             float64
+	Confidence        float64
+	Reasoning         string
+	Components        []SignalComponent
+	DivergenceDetails string // Details about detected divergence
 }
 
 type MultiTimeframeSignal struct {
@@ -145,9 +146,9 @@ func calculateSRScore(bars []types.Bar) float64 {
 	return 0.0
 }
 
-func calculateDivergenceScore(bars []types.Bar, rsiValues []float64) float64 {
+func calculateDivergenceScore(bars []types.Bar, rsiValues []float64) (float64, string) {
 	if len(bars) < 20 || len(rsiValues) < 20 {
-		return 0.0 // Not enough data
+		return 0.0, "" // Not enough data
 	}
 
 	detector := detection.NewDivergenceDetector()
@@ -156,9 +157,11 @@ func calculateDivergenceScore(bars []types.Bar, rsiValues []float64) float64 {
 	regularDiv := detector.DetectRSIDivergence(bars, rsiValues)
 	if regularDiv.Detected {
 		if regularDiv.Type == detection.DivergenceBullish {
-			return 2.5 * (regularDiv.Confidence / 100.0) // Strong buy signal
+			details := fmt.Sprintf("BULLISH Divergence (%.0f%% confidence): %s", regularDiv.Confidence, regularDiv.Reasoning)
+			return 2.5 * (regularDiv.Confidence / 100.0), details
 		} else if regularDiv.Type == detection.DivergenceBearish {
-			return -2.5 * (regularDiv.Confidence / 100.0) // Strong sell signal
+			details := fmt.Sprintf("BEARISH Divergence (%.0f%% confidence): %s", regularDiv.Confidence, regularDiv.Reasoning)
+			return -2.5 * (regularDiv.Confidence / 100.0), details
 		}
 	}
 
@@ -166,9 +169,11 @@ func calculateDivergenceScore(bars []types.Bar, rsiValues []float64) float64 {
 	hiddenDiv := detector.DetectHiddenDivergence(bars, rsiValues)
 	if hiddenDiv.Detected {
 		if hiddenDiv.Type == detection.DivergenceBullish {
-			return 1.5 * (hiddenDiv.Confidence / 100.0) // Moderate buy signal
+			details := fmt.Sprintf("Hidden BULLISH Divergence (%.0f%% confidence): %s", hiddenDiv.Confidence, hiddenDiv.Reasoning)
+			return 1.5 * (hiddenDiv.Confidence / 100.0), details
 		} else if hiddenDiv.Type == detection.DivergenceBearish {
-			return -1.5 * (hiddenDiv.Confidence / 100.0) // Moderate sell signal
+			details := fmt.Sprintf("Hidden BEARISH Divergence (%.0f%% confidence): %s", hiddenDiv.Confidence, hiddenDiv.Reasoning)
+			return -1.5 * (hiddenDiv.Confidence / 100.0), details
 		}
 	}
 
@@ -176,13 +181,15 @@ func calculateDivergenceScore(bars []types.Bar, rsiValues []float64) float64 {
 	exaggeratedDiv := detector.DetectExaggeratedDivergence(rsiValues)
 	if exaggeratedDiv.Detected {
 		if exaggeratedDiv.Direction == "SHORT" {
-			return -1.0 * (exaggeratedDiv.Confidence / 100.0) // Overbought warning
+			details := fmt.Sprintf("RSI Overbought (%.0f%% confidence): %s", exaggeratedDiv.Confidence, exaggeratedDiv.Reasoning)
+			return -1.0 * (exaggeratedDiv.Confidence / 100.0), details
 		} else if exaggeratedDiv.Direction == "LONG" {
-			return 1.0 * (exaggeratedDiv.Confidence / 100.0) // Oversold opportunity
+			details := fmt.Sprintf("RSI Oversold (%.0f%% confidence): %s", exaggeratedDiv.Confidence, exaggeratedDiv.Reasoning)
+			return 1.0 * (exaggeratedDiv.Confidence / 100.0), details
 		}
 	}
 
-	return 0.0 // No divergence detected
+	return 0.0, "" // No divergence detected
 }
 
 // it converts ensemble score to recommendation and reasoning
@@ -253,8 +260,9 @@ func CalculateSignal(
 
 	// Calculate divergence score if enough RSI data is available
 	divergenceScore := 0.0
+	divergenceDetails := ""
 	if len(rsiValues) >= 20 {
-		divergenceScore = calculateDivergenceScore(bars, rsiValues)
+		divergenceScore, divergenceDetails = calculateDivergenceScore(bars, rsiValues)
 		components = append(components, SignalComponent{
 			Name:   "Divergence",
 			Score:  divergenceScore,
@@ -304,11 +312,12 @@ func CalculateSignal(
 	}
 
 	return CombinedSignal{
-		Recommendation: recommendation,
-		Score:          ensembleScore,
-		Confidence:     confidence,
-		Reasoning:      reasoning,
-		Components:     components,
+		Recommendation:    recommendation,
+		Score:             ensembleScore,
+		Confidence:        confidence,
+		Reasoning:         reasoning,
+		Components:        components,
+		DivergenceDetails: divergenceDetails,
 	}
 }
 
