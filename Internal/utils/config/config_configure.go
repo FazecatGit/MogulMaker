@@ -13,7 +13,7 @@ func ConfigureInteractive(cfg *Config) error {
 	reader := bufio.NewReader(os.Stdin)
 
 	for {
-		fmt.Println("\n⚙️  Configuration Menu:")
+		fmt.Println("\nConfiguration Menu:")
 		fmt.Println("1. View Current Configuration")
 		fmt.Println("2. Configure Profile Thresholds")
 		fmt.Println("3. Configure Signal Weights")
