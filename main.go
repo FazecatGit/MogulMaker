@@ -153,6 +153,8 @@ func main() {
 		case 9:
 			handlers.HandleDisplayTradeMonitor(tradeMon)
 		case 10:
+			handlers.HandleDisplayBackTester(cfg)
+		case 11:
 			fmt.Println("Goodbye!")
 			return
 		default:

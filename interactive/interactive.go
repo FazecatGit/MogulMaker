@@ -138,30 +138,6 @@ func FetchMultiTimeframeSignals(symbol string, assetType string) (*signals.Multi
 	return &multiSignal, nil
 }
 
-func ShowMainMenu() (string, error) {
-	fmt.Println("Welcome to MongelMaker Interactive!")
-	fmt.Println("1. Analyze Single Stock")
-	fmt.Println("2. Screen Multiple Stocks")
-	fmt.Print("Enter choice: ")
-	var choice int
-	_, err := fmt.Scan(&choice)
-
-	if err != nil {
-		fmt.Println("Invalid input. Please enter a valid number.")
-		return "", err
-	}
-
-	switch choice {
-	case 1:
-		return "single", nil
-	case 2:
-		return "screener", nil
-	default:
-		fmt.Println("Invalid choice.")
-		return "", fmt.Errorf("invalid choice")
-	}
-}
-
 func PickStockFromResults(results []scanner.StockScore) (string, error) {
 	fmt.Println("\nSelect a stock to analyze in detail:")
 	for i, result := range results {
@@ -424,7 +400,6 @@ func DisplayAnalyticsData(bars []datafeed.Bar, symbol string, timeframe string, 
 	displayPatternSignals(bars, symbol)
 }
 
-// displayPatternSignals shows the most relevant chart pattern for a symbol
 func displayPatternSignals(bars []datafeed.Bar, symbol string) {
 	if len(bars) < 5 {
 		return
@@ -472,7 +447,6 @@ func displayPatternSignals(bars []datafeed.Bar, symbol string) {
 			}
 		}
 	} else if len(bullishPatterns) > 0 {
-		// Only bullish patterns - pick highest confidence
 		bestPattern = &bullishPatterns[0]
 		for i := range bullishPatterns {
 			if bullishPatterns[i].Confidence > bestPattern.Confidence {
@@ -480,7 +454,6 @@ func displayPatternSignals(bars []datafeed.Bar, symbol string) {
 			}
 		}
 	} else if len(bearishPatterns) > 0 {
-		// Only bearish patterns - pick highest confidence
 		bestPattern = &bearishPatterns[0]
 		for i := range bearishPatterns {
 			if bearishPatterns[i].Confidence > bestPattern.Confidence {
@@ -488,7 +461,6 @@ func displayPatternSignals(bars []datafeed.Bar, symbol string) {
 			}
 		}
 	} else if len(neutralPatterns) > 0 {
-		// Only neutral patterns
 		bestPattern = &neutralPatterns[0]
 		for i := range neutralPatterns {
 			if neutralPatterns[i].Confidence > bestPattern.Confidence {
@@ -505,7 +477,7 @@ func displayPatternSignals(bars []datafeed.Bar, symbol string) {
 	fmt.Println("CHART PATTERN ANALYSIS")
 	fmt.Println("═══════════════════════════════════════════════════════════════════════════════════")
 
-	directionIcon := "⏸️ "
+	directionIcon := "Neutral"
 	if bestPattern.Direction == "LONG" {
 		directionIcon = "UP"
 	} else if bestPattern.Direction == "SHORT" {
@@ -1076,16 +1048,16 @@ func DisplayVWAPAnalysis(bars []datafeed.Bar, symbol string, timeframe string) {
 	trend := vwapCalc.GetVWAPTrend()
 	switch trend {
 	case 1:
-		fmt.Println("  Price is ABOVE vWAP (Bullish)")
-		fmt.Println("     → Uptrend favors buyers")
-		fmt.Printf("     → Support level: vWAP at %.2f\n", currentVWAP)
+		fmt.Println("Price is ABOVE vWAP (Bullish)")
+		fmt.Println("Uptrend favors buyers")
+		fmt.Printf("Support level: vWAP at %.2f\n", currentVWAP)
 	case -1:
-		fmt.Println("  Price is BELOW vWAP (Bearish)")
-		fmt.Println("     → Downtrend favors sellers")
-		fmt.Printf("     → Resistance level: vWAP at %.2f\n", currentVWAP)
+		fmt.Println("Price is BELOW vWAP (Bearish)")
+		fmt.Println("Downtrend favors sellers")
+		fmt.Printf("Resistance level: vWAP at %.2f\n", currentVWAP)
 	default:
-		fmt.Println("  Price is AT vWAP (Neutral)")
-		fmt.Println("     → Potential decision point")
+		fmt.Println(" Price is AT vWAP (Neutral)")
+		fmt.Println(" Potential decision point")
 	}
 
 	fmt.Println("\n==========================================")

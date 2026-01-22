@@ -18,6 +18,7 @@ import (
 	"github.com/fazecat/mogulmaker/Internal/handlers/risk"
 	newsscraping "github.com/fazecat/mogulmaker/Internal/news_scraping"
 	"github.com/fazecat/mogulmaker/Internal/strategy"
+	"github.com/fazecat/mogulmaker/Internal/strategy/metrics"
 	positionPkg "github.com/fazecat/mogulmaker/Internal/strategy/position"
 	"github.com/fazecat/mogulmaker/Internal/types"
 	"github.com/fazecat/mogulmaker/Internal/utils/config"
@@ -835,4 +836,33 @@ func HandleDisplayTradeMonitor(tradeMonitor interface{}) {
 	} else {
 		fmt.Println("Trade Monitor not available yet")
 	}
+}
+
+func HandleDisplayBackTester(tradeBacktester interface{}) error {
+	fmt.Print("Enter symbol to backtest (e.g., TSLA): ")
+	var symbol string
+	fmt.Scan(&symbol)
+
+	bars, err := datafeed.GetAlpacaBars(symbol, "1Day", 60, "")
+	if err != nil {
+		return fmt.Errorf("failed to fetch data: %w", err)
+	}
+
+	trades, err := metrics.RunBacktest(symbol, bars, 10000.0)
+	if err != nil {
+		return fmt.Errorf("backtest failed: %w", err)
+	}
+	sharpe := metrics.CalculateSharpeRatio(trades, 0.02)
+
+	totalPnL := 0.0
+	for _, trade := range trades {
+		totalPnL += trade.PnL
+	}
+
+	fmt.Printf("\n=== BACKTEST RESULTS for %s ===\n", symbol)
+	fmt.Printf("Total Trades: %d\n", len(trades))
+	fmt.Printf("Total P&L: $%.2f\n", totalPnL)
+	fmt.Printf("Sharpe Ratio: %.2f\n", sharpe)
+
+	return nil
 }

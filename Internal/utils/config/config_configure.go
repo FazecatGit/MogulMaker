@@ -36,18 +36,17 @@ func ConfigureInteractive(cfg *Config) error {
 		case "5":
 			err := SaveConfig(cfg)
 			if err != nil {
-				fmt.Printf("❌ Error saving config: %v\n", err)
+				fmt.Printf("Error saving config: %v\n", err)
 				continue
 			}
-			fmt.Println("✅ Configuration saved successfully!")
+			fmt.Println("Configuration saved successfully!")
 			return nil
 		default:
-			fmt.Println("❌ Invalid option")
+			fmt.Println(" Invalid option")
 		}
 	}
 }
 
-// DisplayConfiguration shows current configuration
 func DisplayConfiguration(cfg *Config) {
 	fmt.Println("\n📋 Current Configuration:")
 	fmt.Println("\n=== Profiles ===")
@@ -93,14 +92,14 @@ func configureProfileThresholds(cfg *Config, reader *bufio.Reader) {
 	choice = strings.TrimSpace(choice)
 	idx, err := strconv.Atoi(choice)
 	if err != nil || idx < 1 || idx > len(profiles) {
-		fmt.Println("❌ Invalid selection")
+		fmt.Println("Invalid selection")
 		return
 	}
 
 	profileName := profiles[idx-1]
 	profile := cfg.Profiles[profileName]
 
-	fmt.Printf("\n✏️  Configuring %s profile:\n", profileName)
+	fmt.Printf("\n Configuring %s profile:\n", profileName)
 
 	// Threshold
 	fmt.Printf("Current threshold: %.1f\n", profile.Threshold)
@@ -154,7 +153,7 @@ func configureProfileThresholds(cfg *Config, reader *bufio.Reader) {
 }
 
 func configureSignalWeights(cfg *Config, reader *bufio.Reader) {
-	fmt.Println("\n⚖️  Configure Signal Weights:")
+	fmt.Println("\nConfigure Signal Weights:")
 	profiles := make([]string, 0)
 	for name := range cfg.Profiles {
 		profiles = append(profiles, name)
@@ -169,7 +168,7 @@ func configureSignalWeights(cfg *Config, reader *bufio.Reader) {
 	choice = strings.TrimSpace(choice)
 	idx, err := strconv.Atoi(choice)
 	if err != nil || idx < 1 || idx > len(profiles) {
-		fmt.Println("❌ Invalid selection")
+		fmt.Println("Invalid selection")
 		return
 	}
 
@@ -177,7 +176,7 @@ func configureSignalWeights(cfg *Config, reader *bufio.Reader) {
 	profile := cfg.Profiles[profileName]
 	weights := profile.SignalWeights
 
-	fmt.Printf("\n✏️  Configuring weights for %s:\n", profileName)
+	fmt.Printf("\nConfiguring weights for %s:\n", profileName)
 	fmt.Println("(Weights should sum to ~1.0 for balanced scoring)")
 
 	fmt.Printf("Current RSI weight: %.2f\n", weights.RSIWeight)
@@ -220,14 +219,14 @@ func configureSignalWeights(cfg *Config, reader *bufio.Reader) {
 
 	// Calculate sum
 	sum := weights.RSIWeight + weights.ATRWeight + weights.VolumeWeight + weights.NewsSentimentWeight + weights.WhaleActivityWeight
-	fmt.Printf("✅ Weights updated (Sum: %.2f)\n", sum)
+	fmt.Printf("Weights updated (Sum: %.2f)\n", sum)
 	if sum != 1.0 {
-		fmt.Printf("⚠️  Note: Weights sum to %.2f (ideally 1.0 for balanced scoring)\n", sum)
+		fmt.Printf(" Note: Weights sum to %.2f (ideally 1.0 for balanced scoring)\n", sum)
 	}
 }
 
 func configureFeatures(cfg *Config, reader *bufio.Reader) {
-	fmt.Println("\n🚀 Configure Features:")
+	fmt.Println("\nConfigure Features:")
 	fmt.Printf("1. Crypto Support: %s\n", enabledStr(cfg.Features.CryptoSupport))
 	fmt.Printf("2. Short Signals: %s\n", enabledStr(cfg.Features.EnableShortSignals))
 	fmt.Print("Select feature to toggle (1-2) or press Enter to skip: ")
@@ -238,10 +237,10 @@ func configureFeatures(cfg *Config, reader *bufio.Reader) {
 	switch choice {
 	case "1":
 		cfg.Features.CryptoSupport = !cfg.Features.CryptoSupport
-		fmt.Printf("✅ Crypto Support: %s\n", enabledStr(cfg.Features.CryptoSupport))
+		fmt.Printf("Crypto Support: %s\n", enabledStr(cfg.Features.CryptoSupport))
 	case "2":
 		cfg.Features.EnableShortSignals = !cfg.Features.EnableShortSignals
-		fmt.Printf("✅ Short Signals: %s\n", enabledStr(cfg.Features.EnableShortSignals))
+		fmt.Printf("Short Signals: %s\n", enabledStr(cfg.Features.EnableShortSignals))
 	default:
 		fmt.Println("No changes made")
 	}
