@@ -75,3 +75,16 @@ func createTradeResult(symbol string, pos Position, exitPrice float64, exitTime 
 		ExitTime:      exitTime,
 	}
 }
+
+func CalculateWinRate(trades []TradeResult) float64 {
+	if len(trades) == 0 {
+		return 0.0
+	}
+	wins := 0
+	for _, trade := range trades {
+		if trade.PnL > 0 {
+			wins++
+		}
+	}
+	return (float64(wins) / float64(len(trades))) * 100
+}

@@ -123,8 +123,9 @@ func main() {
 		fmt.Println("7. Close/Sell Position")
 		fmt.Println("8. Risk Manager Dashboard")
 		fmt.Println("9. Trade Monitor")
-		fmt.Println("10. Exit")
-		fmt.Print("Enter choice (1-10): ")
+		fmt.Println("10. Backtester")
+		fmt.Println("11. Exit")
+		fmt.Print("Enter choice (1-11): ")
 
 		var choice int
 		_, err := fmt.Scanln(&choice)
@@ -153,7 +154,7 @@ func main() {
 		case 9:
 			handlers.HandleDisplayTradeMonitor(tradeMon)
 		case 10:
-			handlers.HandleDisplayBackTester(cfg)
+			handlers.HandleDisplayBackTester()
 		case 11:
 			fmt.Println("Goodbye!")
 			return

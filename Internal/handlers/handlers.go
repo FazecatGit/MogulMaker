@@ -100,7 +100,7 @@ func HandleScan(ctx context.Context, cfg *config.Config, q *database.Queries) {
 
 func HandleAnalyzeSingle(ctx context.Context, assetType string, q *database.Queries, newsStorage *newsscraping.NewsStorage, finnhubClient *newsscraping.FinnhubClient) {
 	if assetType == "" {
-		assetType = "stock" // default
+		assetType = "stock"
 	}
 	ClearInputBuffer()
 
@@ -119,7 +119,7 @@ func HandleAnalyzeSingle(ctx context.Context, assetType string, q *database.Quer
 		return
 	}
 
-	// Fetch and store news for stocks (not crypto)
+	// Fetch and store news for stocks (not crypto for now)
 	if assetType == "stock" && finnhubClient != nil && newsStorage != nil {
 		fmt.Println("Fetching latest news...")
 		newsArticles, err := finnhubClient.FetchNews(symbol, 5)
@@ -250,7 +250,6 @@ func HandleScout(ctx context.Context, cfg *config.Config, q *database.Queries, n
 
 	fmt.Printf("\nUsing %s profile with threshold: %.1f\n", selectedProfile, minScore)
 
-	// Asset type selection
 	assetType := "stock"
 	if cfg.Features.CryptoSupport {
 		fmt.Println("\nAsset Type:")
@@ -269,7 +268,7 @@ func HandleScout(ctx context.Context, cfg *config.Config, q *database.Queries, n
 	fmt.Print("Review every N symbols (50 or 100): ")
 	fmt.Scanln(&batchSize)
 	if batchSize != 50 && batchSize != 100 {
-		batchSize = 50 // default
+		batchSize = 50 // default if misinput
 	}
 
 	offset := 0
@@ -372,7 +371,6 @@ func HandleScout(ctx context.Context, cfg *config.Config, q *database.Queries, n
 	bufio.NewReader(os.Stdin).ReadBytes('\n')
 }
 
-// displays trade signals and executes manual trades
 func HandleExecuteTrades(ctx context.Context, cfg *config.Config, q *database.Queries, client *alpaca.Client) {
 	ClearInputBuffer()
 
@@ -381,7 +379,6 @@ func HandleExecuteTrades(ctx context.Context, cfg *config.Config, q *database.Qu
 	fmt.Println("LIVE TRADE EXECUTION")
 	fmt.Println(separator)
 
-	// Get account info
 	account, err := client.GetAccount()
 	if err != nil {
 		fmt.Printf("Failed to get account info: %v\n", err)
@@ -392,15 +389,13 @@ func HandleExecuteTrades(ctx context.Context, cfg *config.Config, q *database.Qu
 	accountValue := accountValueFloat
 	fmt.Printf("Account Balance: $%.2f\n", accountValue)
 
-	// Create position manager with safety limits
 	orderConfig := &strategy.OrderConfig{
-		MaxPortfolioPercent:   20.0, // Max 20% of account per trade
-		MaxOpenPositions:      5,    // Max 5 concurrent trades
-		StopLossPercent:       2.0,  // 2% stop loss
-		TakeProfitPercent:     5.0,  // 5% take profit
-		SafeBailPercent:       3.0,  // 3% safe bail for partial exit
-		MaxDailyLossPercent:   -2.0, // Stop if daily loss exceeds -2%
-		PartialExitPercentage: 0.5,  // Exit 50% at take profit
+		MaxPortfolioPercent:   20.0, // Max 20%
+		StopLossPercent:       2.0,  // 2%
+		TakeProfitPercent:     5.0,  // 5%
+		SafeBailPercent:       3.0,  // 3%
+		MaxDailyLossPercent:   -2.0, // -2%
+		PartialExitPercentage: 0.5,  //50%
 	}
 
 	posManager := positionPkg.NewPositionManager(client, orderConfig)
@@ -452,7 +447,6 @@ func HandleExecuteTrades(ctx context.Context, cfg *config.Config, q *database.Qu
 	bar := bars[len(bars)-1]
 	entryPrice := bar.Close
 
-	// Calculate price targets
 	stopLoss, takeProfit := strategy.CalculatePriceTargets(entryPrice, direction, orderConfig)
 	safeBail := 0.0
 	if direction == "LONG" {
@@ -472,7 +466,7 @@ func HandleExecuteTrades(ctx context.Context, cfg *config.Config, q *database.Qu
 		Symbol:           symbol,
 		Quantity:         quantity,
 		Direction:        direction,
-		SignalConfidence: 75.0, // Default confidence for manual trades
+		SignalConfidence: 75.0, // Default
 		TradeReason:      "Manual execution from HandleExecuteTrades",
 		StopLossPrice:    stopLoss,
 		TakeProfitPrice:  takeProfit,
@@ -495,7 +489,6 @@ func HandleExecuteTrades(ctx context.Context, cfg *config.Config, q *database.Qu
 		return
 	}
 
-	// Display order preview
 	fmt.Println("\n" + separator)
 	fmt.Println("ORDER PREVIEW")
 	fmt.Println(separator)
@@ -519,7 +512,6 @@ func HandleExecuteTrades(ctx context.Context, cfg *config.Config, q *database.Qu
 		return
 	}
 
-	// Build Alpaca order
 	alpacaOrder, err := strategy.BuildPlaceOrderRequest(orderReq)
 	if err != nil {
 		fmt.Printf("Failed to build order: %v\n", err)
@@ -544,7 +536,6 @@ func HandleExecuteTrades(ctx context.Context, cfg *config.Config, q *database.Qu
 
 	strategy.LogOrderExecution(orderReq, validation, order.ID)
 
-	// Log trade to database for persistent storage
 	err = datafeed.LogTradeExecution(ctx, order.Symbol, direction, orderReq.Quantity,
 		decimal.NewFromFloat(entryPrice), order.ID, order.Status)
 	if err != nil {
@@ -556,7 +547,6 @@ func HandleExecuteTrades(ctx context.Context, cfg *config.Config, q *database.Qu
 	fmt.Println("\nPosition monitoring enabled in background")
 	fmt.Println("   View it anytime via: Trade Monitor (Option 9)")
 
-	// Start monitoring position in background
 	go posManager.MonitorPositions(ctx, 5*time.Second)
 }
 
@@ -568,7 +558,6 @@ func HandleClosePosition(ctx context.Context, client *alpaca.Client, cfg *config
 	fmt.Println(" CLOSE/SELL POSITION")
 	fmt.Println(separator)
 
-	// Simple approach - ask user for symbol to close
 	fmt.Print("\nEnter symbol to close (e.g., AAPL): ")
 	var symbol string
 	_, err := fmt.Scanln(&symbol)
@@ -602,7 +591,6 @@ func HandleClosePosition(ctx context.Context, client *alpaca.Client, cfg *config
 	fmt.Println(separator)
 }
 
-// displays trade history and statistics
 func HandleTradeHistory(ctx context.Context, cfg *config.Config, q *database.Queries) {
 	fmt.Println("\n=== Trade History ===")
 	var symbol string
@@ -673,7 +661,6 @@ func HandleTradeHistory(ctx context.Context, cfg *config.Config, q *database.Que
 		displayCount := 10
 
 		for {
-			// Get trades to display
 			endIndex := displayCount
 			if endIndex > totalTrades {
 				endIndex = totalTrades
@@ -775,7 +762,6 @@ func HandleDisplayRiskManager(riskManager interface{}, positionManager interface
 		return
 	}
 
-	// Get open positions from position manager
 	var positions []*positionPkg.OpenPosition
 	if pm, ok := positionManager.(*positionPkg.PositionManager); ok && pm != nil {
 		ctx := context.Background()
@@ -785,7 +771,6 @@ func HandleDisplayRiskManager(riskManager interface{}, positionManager interface
 		positions = pm.GetOpenPositions()
 	}
 
-	// Generate and display report
 	report := rm.GenerateRiskReport(positions)
 	report.Print()
 }
@@ -799,7 +784,6 @@ func HandleDisplayTradeMonitor(tradeMonitor interface{}) {
 	}
 
 	if tm, ok := tradeMonitor.(Monitor); ok {
-		// Show menu for what to display
 		fmt.Println("\nTrade Monitor Menu:")
 		fmt.Println("1. Open Positions")
 		fmt.Println("2. Trade Statistics")
@@ -812,7 +796,7 @@ func HandleDisplayTradeMonitor(tradeMonitor interface{}) {
 		var choice int
 		_, err := fmt.Scanln(&choice)
 		if err != nil || choice < 1 || choice > 6 {
-			fmt.Println("❌ Invalid choice")
+			fmt.Println("Invalid choice")
 			return
 		}
 
@@ -838,31 +822,41 @@ func HandleDisplayTradeMonitor(tradeMonitor interface{}) {
 	}
 }
 
-func HandleDisplayBackTester(tradeBacktester interface{}) error {
+func HandleDisplayBackTester() {
 	fmt.Print("Enter symbol to backtest (e.g., TSLA): ")
 	var symbol string
 	fmt.Scan(&symbol)
+	ClearInputBuffer() // Clear leftover newline from input
+
+	if symbol == "" {
+		fmt.Println("Invalid symbol")
+		return
+	}
+
+	symbol = strings.ToUpper(symbol)
 
 	bars, err := datafeed.GetAlpacaBars(symbol, "1Day", 60, "")
 	if err != nil {
-		return fmt.Errorf("failed to fetch data: %w", err)
+		fmt.Printf("Failed to fetch data: %v\n", err)
+		return
 	}
 
 	trades, err := metrics.RunBacktest(symbol, bars, 10000.0)
 	if err != nil {
-		return fmt.Errorf("backtest failed: %w", err)
+		fmt.Printf("Backtest failed: %v\n", err)
+		return
 	}
 	sharpe := metrics.CalculateSharpeRatio(trades, 0.02)
+	winRate := metrics.CalculateWinRate(trades)
 
 	totalPnL := 0.0
 	for _, trade := range trades {
 		totalPnL += trade.PnL
 	}
 
-	fmt.Printf("\n=== BACKTEST RESULTS for %s ===\n", symbol)
+	fmt.Printf("\n=== BACKTEST RESULTS for %s (60 days) ===\n", symbol)
 	fmt.Printf("Total Trades: %d\n", len(trades))
 	fmt.Printf("Total P&L: $%.2f\n", totalPnL)
 	fmt.Printf("Sharpe Ratio: %.2f\n", sharpe)
-
-	return nil
+	fmt.Printf("Win Rate: %.2f%%\n", winRate)
 }

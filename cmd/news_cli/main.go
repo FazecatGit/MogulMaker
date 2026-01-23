@@ -9,14 +9,13 @@ import (
 )
 
 func main() {
-	// 1. Try to fetch news
-	fmt.Println("📰 Fetching news from RSS...")
+
+	fmt.Println("Fetching news from RSS...")
 	rss := newscraping.NewRSSClinet()
 	articles, err := rss.FetchNews("AAPL", 5)
 	if err != nil {
-		fmt.Printf("⚠️  RSS fetch failed: %v\n", err)
-		fmt.Println("📝 Creating test articles instead...")
-		// Create test articles to demonstrate sentiment and catalyst detection
+		fmt.Printf("RSS fetch failed: %v\n", err)
+		fmt.Println("Creating test articles instead...")
 		articles = []newscraping.NewsArticle{
 			{
 				Symbol:      "AAPL",
@@ -53,7 +52,6 @@ func main() {
 		}
 	}
 
-	// 2. Analyze sentiment and catalysts
 	sentiment := newscraping.NewSentimentAnalyzer()
 	catalyst := newscraping.NewCatalystDetector()
 
@@ -62,21 +60,18 @@ func main() {
 	fmt.Println(strings.Repeat("=", 80))
 
 	for _, article := range articles {
-		// Sentiment
 		sent, score := sentiment.Analyze(article.Headline)
 
-		// Catalyst
 		catalystType := catalyst.Detect(article.Headline)
 		impact := catalyst.GetImpact(catalystType)
 
-		// Display
-		fmt.Printf("\n📝 %s\n", article.Headline)
-		fmt.Printf("   URL: %s\n", article.URL)
-		fmt.Printf("   📊 Sentiment: %s (Score: %.2f)\n", sent, score)
-		fmt.Printf("   🎯 Catalyst: %s (Impact: %.0f%%)\n", catalystType, impact*100)
+		fmt.Printf("\n %s\n", article.Headline)
+		fmt.Printf(" URL: %s\n", article.URL)
+		fmt.Printf(" Sentiment: %s (Score: %.2f)\n", sent, score)
+		fmt.Printf(" Catalyst: %s (Impact: %.0f%%)\n", catalystType, impact*100)
 	}
 
 	fmt.Println("\n" + strings.Repeat("=", 80))
-	fmt.Println("✅ Sentiment & Catalyst Analysis Complete!")
+	fmt.Println("Sentiment & Catalyst Analysis Complete!")
 	fmt.Println(strings.Repeat("=", 80))
 }
