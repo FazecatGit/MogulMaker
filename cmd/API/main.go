@@ -1,0 +1,147 @@
+package main
+
+import (
+	"encoding/json"
+	"log"
+	"net/http"
+	"os"
+
+	"github.com/alpacahq/alpaca-trade-api-go/v3/alpaca"
+	datafeed "github.com/fazecat/mogulmaker/Internal/database"
+	database "github.com/fazecat/mogulmaker/Internal/database/sqlc"
+	"github.com/fazecat/mogulmaker/Internal/handlers/monitoring"
+	"github.com/fazecat/mogulmaker/Internal/handlers/risk"
+	"github.com/fazecat/mogulmaker/Internal/strategy"
+	"github.com/fazecat/mogulmaker/Internal/strategy/position"
+	"github.com/go-chi/chi/v5"
+	"github.com/go-chi/chi/v5/middleware"
+	"github.com/joho/godotenv"
+)
+
+type API struct {
+	positionManager *position.PositionManager
+	riskManager     *risk.Manager
+	queries         *database.Queries
+	tradeMonitor    *monitoring.Monitor
+}
+
+// duped from main.go will change later to use less code
+func main() {
+	err := godotenv.Load("../../.env")
+	if err != nil {
+		log.Fatal("Error loading .env file")
+	}
+	err = datafeed.InitDatabase()
+	if err != nil {
+		log.Fatalf("Failed to connect to database: %v", err)
+	}
+	defer datafeed.CloseDatabase()
+	apiKey := os.Getenv("ALPACA_API_KEY")
+	secretKey := os.Getenv("ALPACA_API_SECRET")
+
+	alpclient := alpaca.NewClient(alpaca.ClientOpts{
+		APIKey:    apiKey,
+		APISecret: secretKey,
+		BaseURL:   "https://paper-api.alpaca.markets"})
+
+	req, _ := http.NewRequest("GET", "https://paper-api.alpaca.markets/v2/account", nil)
+	req.Header.Set("APCA-API-KEY-ID", apiKey)
+	req.Header.Set("APCA-API-SECRET-KEY", secretKey)
+
+	_, err = alpclient.GetAccount()
+	if err != nil {
+		log.Fatalln(err)
+	}
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		log.Fatalln(err)
+	}
+	defer resp.Body.Close()
+
+	account, err := alpclient.GetAccount()
+	if err != nil {
+		log.Printf("Warning: Could not fetch account for risk manager: %v\n", err)
+	}
+
+	var riskMgr *risk.Manager
+	if account != nil {
+		accountEquity, _ := account.Equity.Float64()
+		riskMgr = risk.NewManager(alpclient, accountEquity)
+		log.Println("Risk Manager initialized")
+	} else {
+		log.Println("Risk Manager could not be initialized - account data unavailable")
+	}
+
+	orderConfig := &strategy.OrderConfig{
+		MaxOpenPositions:      5,
+		MaxPortfolioPercent:   20.0,
+		StopLossPercent:       2.0,
+		TakeProfitPercent:     5.0,
+		SafeBailPercent:       3.0,
+		MaxDailyLossPercent:   -2.0,
+		PartialExitPercentage: 0.5,
+	}
+	posManager := position.NewPositionManager(alpclient, orderConfig)
+
+	tradeMon := monitoring.NewMonitor(posManager, riskMgr, datafeed.Queries)
+	log.Println("Trade Monitor initialized")
+
+	log.Println("Previous trades loaded from database")
+
+	err = datafeed.InitAlpacaClient()
+	if err != nil {
+		log.Printf("Warning: Alpaca client initialization failed: %v\n", err)
+	}
+
+	api := &API{
+		positionManager: posManager,
+		riskManager:     riskMgr,
+		queries:         datafeed.Queries,
+		tradeMonitor:    tradeMon,
+	}
+
+	r := chi.NewRouter()
+
+	// Middleware
+	r.Use(middleware.Logger)
+	r.Use(middleware.Recoverer)
+
+	r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": true,
+			"data":    "healthy",
+		})
+	})
+
+	r.Get("/api/positions", api.HandleGetPositions)
+
+	log.Println("Starting API server on :8080")
+	if err := http.ListenAndServe(":8080", r); err != nil {
+		log.Fatal(err)
+	}
+}
+
+func (api *API) HandleGetPositions(w http.ResponseWriter, r *http.Request) {
+	positions := api.positionManager.GetOpenPositions()
+
+	var riskStatus interface{}
+	if api.riskManager != nil {
+		riskStatus = map[string]interface{}{
+			"enabled": true,
+		}
+	} else {
+		riskStatus = map[string]interface{}{
+			"enabled": false,
+		}
+	}
+
+	response := map[string]interface{}{
+		"positions":   positions,
+		"risk_status": riskStatus,
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(response)
+}
