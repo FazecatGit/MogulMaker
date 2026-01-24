@@ -8,22 +8,15 @@ import (
 
 	"github.com/alpacahq/alpaca-trade-api-go/v3/alpaca"
 	datafeed "github.com/fazecat/mogulmaker/Internal/database"
-	database "github.com/fazecat/mogulmaker/Internal/database/sqlc"
 	"github.com/fazecat/mogulmaker/Internal/handlers/monitoring"
 	"github.com/fazecat/mogulmaker/Internal/handlers/risk"
 	"github.com/fazecat/mogulmaker/Internal/strategy"
 	"github.com/fazecat/mogulmaker/Internal/strategy/position"
+	"github.com/fazecat/mogulmaker/cmd/API/internal"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/joho/godotenv"
 )
-
-type API struct {
-	positionManager *position.PositionManager
-	riskManager     *risk.Manager
-	queries         *database.Queries
-	tradeMonitor    *monitoring.Monitor
-}
 
 // duped from main.go will change later to use less code
 func main() {
@@ -95,11 +88,11 @@ func main() {
 		log.Printf("Warning: Alpaca client initialization failed: %v\n", err)
 	}
 
-	api := &API{
-		positionManager: posManager,
-		riskManager:     riskMgr,
-		queries:         datafeed.Queries,
-		tradeMonitor:    tradeMon,
+	apiServer := &internal.API{
+		PositionManager: posManager,
+		RiskManager:     riskMgr,
+		Queries:         datafeed.Queries,
+		TradeMonitor:    tradeMon,
 	}
 
 	r := chi.NewRouter()
@@ -116,32 +109,12 @@ func main() {
 		})
 	})
 
-	r.Get("/api/positions", api.HandleGetPositions)
+	r.Get("/api/positions", apiServer.HandleGetPositions)
+	r.Get("/api/risk", apiServer.HandleGetRiskStatus)
+	r.Get("/api/stats", apiServer.HandleGetStats)
 
 	log.Println("Starting API server on :8080")
 	if err := http.ListenAndServe(":8080", r); err != nil {
 		log.Fatal(err)
 	}
-}
-
-func (api *API) HandleGetPositions(w http.ResponseWriter, r *http.Request) {
-	positions := api.positionManager.GetOpenPositions()
-
-	var riskStatus interface{}
-	if api.riskManager != nil {
-		riskStatus = map[string]interface{}{
-			"enabled": true,
-		}
-	} else {
-		riskStatus = map[string]interface{}{
-			"enabled": false,
-		}
-	}
-
-	response := map[string]interface{}{
-		"positions":   positions,
-		"risk_status": riskStatus,
-	}
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(response)
 }

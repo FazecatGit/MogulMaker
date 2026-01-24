@@ -101,7 +101,7 @@ func CalculateSymbolStats(trades []TradeResult) map[string]*SymbolStats {
 		// 2% risk-free rate assumed
 		Sharpe := CalculateSharpeRatio(tradesForSymbol, 0.02)
 		Sortino := CalculateSortinoRatio(tradesForSymbol, 0.02)
-		Calmar := CalculateCalmarRatio(tradesForSymbol, Sharpe*0.02, 0.1) // Example max drawdown
+		Calmar := CalculateCalmarRatio(tradesForSymbol, Sharpe*0.02, 0.1)
 		symbolStats := &SymbolStats{
 			Symbol:       symbol,
 			TotalTrades:  len(tradesForSymbol),
