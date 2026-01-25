@@ -12,7 +12,7 @@ import (
 	"github.com/fazecat/mogulmaker/Internal/handlers/risk"
 	"github.com/fazecat/mogulmaker/Internal/strategy"
 	"github.com/fazecat/mogulmaker/Internal/strategy/position"
-	"github.com/fazecat/mogulmaker/cmd/API/internal"
+	"github.com/fazecat/mogulmaker/cmd/api/internal"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/joho/godotenv"
@@ -100,6 +100,7 @@ func main() {
 	// Middleware
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
+	r.Use(internal.CorsMiddleware)
 
 	r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -112,6 +113,7 @@ func main() {
 	r.Get("/api/positions", apiServer.HandleGetPositions)
 	r.Get("/api/risk", apiServer.HandleGetRiskStatus)
 	r.Get("/api/stats", apiServer.HandleGetStats)
+	r.Get("/api/trades", apiServer.HandleGetTrades)
 
 	log.Println("Starting API server on :8080")
 	if err := http.ListenAndServe(":8080", r); err != nil {

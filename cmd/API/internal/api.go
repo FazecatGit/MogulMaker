@@ -2,7 +2,6 @@ package internal
 
 import (
 	"context"
-	"encoding/json"
 	"log"
 	"net/http"
 	"strconv"
@@ -40,8 +39,7 @@ func (api *API) HandleGetPositions(w http.ResponseWriter, r *http.Request) {
 		"positions":   positions,
 		"risk_status": riskStatus,
 	}
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(response)
+	WriteJSON(w, http.StatusOK, response)
 }
 
 func (api *API) HandleGetRiskStatus(w http.ResponseWriter, r *http.Request) {
@@ -56,18 +54,14 @@ func (api *API) HandleGetRiskStatus(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(riskStatus)
+	WriteJSON(w, http.StatusOK, riskStatus)
 }
 
 func (api *API) HandleGetStats(w http.ResponseWriter, r *http.Request) {
 	dbTrades, err := api.Queries.GetAllTrades(context.Background())
 	if err != nil {
 		log.Printf("Error fetching trades: %v", err)
-		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]interface{}{
-			"error": "Failed to fetch trades",
-		})
+		WriteError(w, http.StatusInternalServerError, "Failed to fetch trades")
 		return
 	}
 
@@ -100,8 +94,7 @@ func (api *API) HandleGetStats(w http.ResponseWriter, r *http.Request) {
 		"win_rate":         winRate,
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(response)
+	WriteJSON(w, http.StatusOK, response)
 }
 
 func convertToTradeResults(dbTrades []database.GetAllTradesRow) []metrics.TradeResult {
@@ -160,4 +153,41 @@ func convertToTradeResults(dbTrades []database.GetAllTradesRow) []metrics.TradeR
 	}
 
 	return results
+}
+
+func (api *API) HandleGetTrades(w http.ResponseWriter, r *http.Request) {
+	symbol := r.URL.Query().Get("symbol")
+	limitStr := r.URL.Query().Get("limit")
+
+	limit := 50
+	if limitStr != "" {
+		parsedLimit, err := strconv.Atoi(limitStr)
+		if err == nil && parsedLimit > 0 {
+			limit = parsedLimit
+		}
+	}
+
+	allTrades, err := api.Queries.GetAllTrades(context.Background())
+	if err != nil {
+		log.Printf("Error fetching trades: %v", err)
+		WriteError(w, http.StatusInternalServerError, "Failed to fetch trades")
+		return
+	}
+
+	var filteredTrades []database.GetAllTradesRow
+	if symbol != "" {
+		for _, trade := range allTrades {
+			if trade.Symbol == symbol {
+				filteredTrades = append(filteredTrades, trade)
+			}
+		}
+	} else {
+		filteredTrades = allTrades
+	}
+
+	if len(filteredTrades) > limit {
+		filteredTrades = filteredTrades[:limit]
+	}
+
+	WriteJSON(w, http.StatusOK, filteredTrades)
 }
