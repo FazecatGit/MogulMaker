@@ -11,6 +11,8 @@ require (
 
 require github.com/go-chi/chi/v5 v5.2.4
 
+require github.com/golang-jwt/jwt/v5 v5.3.0 // direct
+
 require (
 	cloud.google.com/go v0.118.0 // indirect
 	github.com/josharian/intern v1.0.0 // indirect

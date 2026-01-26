@@ -2,16 +2,19 @@ package internal
 
 import (
 	"context"
+	"encoding/json"
 	"log"
 	"net/http"
 	"strconv"
 	"time"
 
+	"github.com/alpacahq/alpaca-trade-api-go/v3/alpaca"
 	database "github.com/fazecat/mogulmaker/Internal/database/sqlc"
 	"github.com/fazecat/mogulmaker/Internal/handlers/monitoring"
 	"github.com/fazecat/mogulmaker/Internal/handlers/risk"
 	"github.com/fazecat/mogulmaker/Internal/strategy/metrics"
 	"github.com/fazecat/mogulmaker/Internal/strategy/position"
+	"github.com/shopspring/decimal"
 )
 
 type API struct {
@@ -19,25 +22,24 @@ type API struct {
 	RiskManager     *risk.Manager
 	Queries         *database.Queries
 	TradeMonitor    *monitoring.Monitor
+	AlpacaClient    *alpaca.Client
+	JWTManager      *JWTManager
 }
 
 func (api *API) HandleGetPositions(w http.ResponseWriter, r *http.Request) {
-	positions := api.PositionManager.GetOpenPositions()
-
-	var riskStatus interface{}
-	if api.RiskManager != nil {
-		riskStatus = map[string]interface{}{
-			"enabled": true,
-		}
-	} else {
-		riskStatus = map[string]interface{}{
-			"enabled": false,
-		}
+	// Fetch directly from Alpaca, not from memory
+	alpacaPositions, err := api.AlpacaClient.GetPositions()
+	if err != nil {
+		log.Printf("Error fetching positions from Alpaca: %v", err)
+		WriteError(w, http.StatusInternalServerError, "Failed to fetch positions")
+		return
 	}
 
 	response := map[string]interface{}{
-		"positions":   positions,
-		"risk_status": riskStatus,
+		"positions": alpacaPositions,
+		"risk_status": map[string]interface{}{
+			"enabled": api.RiskManager != nil,
+		},
 	}
 	WriteJSON(w, http.StatusOK, response)
 }
@@ -190,4 +192,196 @@ func (api *API) HandleGetTrades(w http.ResponseWriter, r *http.Request) {
 	}
 
 	WriteJSON(w, http.StatusOK, filteredTrades)
+}
+
+func (api *API) HandleSellAllTrades(w http.ResponseWriter, r *http.Request) {
+	positions := api.PositionManager.GetOpenPositions()
+
+	if len(positions) == 0 {
+		WriteJSON(w, http.StatusOK, map[string]interface{}{
+			"message":      "No open positions to sell",
+			"sold_count":   0,
+			"failed_count": 0,
+		})
+		return
+	}
+
+	var soldSymbols []string
+	var failedSymbols []map[string]interface{}
+
+	for _, pos := range positions {
+		// Close position via Alpaca API
+		_, err := api.AlpacaClient.ClosePosition(pos.Symbol, alpaca.ClosePositionRequest{})
+		if err != nil {
+			failedSymbols = append(failedSymbols, map[string]interface{}{
+				"symbol": pos.Symbol,
+				"error":  err.Error(),
+			})
+		} else {
+			soldSymbols = append(soldSymbols, pos.Symbol)
+		}
+	}
+
+	response := map[string]interface{}{
+		"message":      "Sell all trades completed",
+		"sold":         soldSymbols,
+		"sold_count":   len(soldSymbols),
+		"failed":       failedSymbols,
+		"failed_count": len(failedSymbols),
+		"total_count":  len(positions),
+	}
+
+	WriteJSON(w, http.StatusOK, response)
+}
+
+// HandleGetPositionBySymbol gets a specific position by symbol
+func (api *API) HandleGetPositionBySymbol(w http.ResponseWriter, r *http.Request) {
+	symbol := r.PathValue("symbol")
+	if symbol == "" {
+		WriteError(w, http.StatusBadRequest, "Symbol is required")
+		return
+	}
+
+	position, err := api.AlpacaClient.GetPosition(symbol)
+	if err != nil {
+		WriteError(w, http.StatusNotFound, "Position not found")
+		return
+	}
+
+	WriteJSON(w, http.StatusOK, position)
+}
+
+// HandleExecuteTrade executes a trade
+func (api *API) HandleExecuteTrade(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Symbol   string  `json:"symbol"`
+		Side     string  `json:"side"`
+		Quantity float64 `json:"quantity"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		WriteError(w, http.StatusBadRequest, "Invalid JSON body")
+		return
+	}
+
+	if req.Symbol == "" {
+		WriteError(w, http.StatusBadRequest, "Symbol is required")
+		return
+	}
+	if req.Side != "buy" && req.Side != "sell" {
+		WriteError(w, http.StatusBadRequest, "Side must be 'buy' or 'sell'")
+		return
+	}
+	if req.Quantity <= 0 {
+		WriteError(w, http.StatusBadRequest, "Quantity must be greater than 0")
+		return
+	}
+
+	side := alpaca.Buy
+	if req.Side == "sell" {
+		side = alpaca.Sell
+	}
+
+	qty := decimal.NewFromFloat(req.Quantity)
+	order := alpaca.PlaceOrderRequest{
+		Symbol:      req.Symbol,
+		Qty:         &qty,
+		Side:        side,
+		Type:        alpaca.Market,
+		TimeInForce: alpaca.Day,
+	}
+
+	placedOrder, err := api.AlpacaClient.PlaceOrder(order)
+	if err != nil {
+		log.Printf("Error placing order: %v", err)
+		WriteError(w, http.StatusInternalServerError, "Failed to execute trade")
+		return
+	}
+
+	response := map[string]interface{}{
+		"success":  true,
+		"order_id": placedOrder.ID,
+		"symbol":   placedOrder.Symbol,
+		"side":     placedOrder.Side,
+		"quantity": placedOrder.Qty.String(),
+		"status":   placedOrder.Status,
+	}
+
+	WriteJSON(w, http.StatusCreated, response)
+}
+
+func (api *API) HandleClosePosition(w http.ResponseWriter, r *http.Request) {
+	symbol := r.PathValue("symbol")
+	if symbol == "" {
+		WriteError(w, http.StatusBadRequest, "Symbol is required")
+		return
+	}
+
+	position, err := api.AlpacaClient.GetPosition(symbol)
+	if err != nil {
+		WriteError(w, http.StatusNotFound, "Position not found")
+		return
+	}
+
+	qty, _ := position.Qty.Float64()
+
+	qtyDecimal := decimal.NewFromFloat(qty)
+	order := alpaca.PlaceOrderRequest{
+		Symbol:      symbol,
+		Qty:         &qtyDecimal,
+		Side:        alpaca.Sell,
+		Type:        alpaca.Market,
+		TimeInForce: alpaca.Day,
+	}
+
+	placedOrder, err := api.AlpacaClient.PlaceOrder(order)
+	if err != nil {
+		log.Printf("Error closing position: %v", err)
+		WriteError(w, http.StatusInternalServerError, "Failed to close position")
+		return
+	}
+
+	response := map[string]interface{}{
+		"success":  true,
+		"message":  "Position closed",
+		"order_id": placedOrder.ID,
+		"symbol":   placedOrder.Symbol,
+		"quantity": placedOrder.Qty.String(),
+		"status":   placedOrder.Status,
+	}
+
+	WriteJSON(w, http.StatusOK, response)
+}
+
+// HandleGenerateToken generates a JWT token
+func (api *API) HandleGenerateToken(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		UserID string `json:"user_id"`
+		Email  string `json:"email"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		WriteError(w, http.StatusBadRequest, "Invalid JSON body")
+		return
+	}
+
+	if req.UserID == "" {
+		WriteError(w, http.StatusBadRequest, "user_id is required")
+		return
+	}
+
+	token, err := api.JWTManager.GenerateToken(req.UserID, req.Email, 24)
+	if err != nil {
+		log.Printf("Error generating token: %v", err)
+		WriteError(w, http.StatusInternalServerError, "Failed to generate token")
+		return
+	}
+
+	response := map[string]interface{}{
+		"token":      token,
+		"user_id":    req.UserID,
+		"expires_at": time.Now().Add(24 * time.Hour).Unix(),
+	}
+
+	WriteJSON(w, http.StatusOK, response)
 }

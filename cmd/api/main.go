@@ -88,11 +88,16 @@ func main() {
 		log.Printf("Warning: Alpaca client initialization failed: %v\n", err)
 	}
 
+	// Initialize JWT manager
+	jwtManager := internal.NewJWTManager()
+
 	apiServer := &internal.API{
 		PositionManager: posManager,
 		RiskManager:     riskMgr,
 		Queries:         datafeed.Queries,
 		TradeMonitor:    tradeMon,
+		AlpacaClient:    alpclient,
+		JWTManager:      jwtManager,
 	}
 
 	r := chi.NewRouter()
@@ -110,10 +115,18 @@ func main() {
 		})
 	})
 
+	// Public routes
 	r.Get("/api/positions", apiServer.HandleGetPositions)
+	r.Get("/api/positions/{symbol}", apiServer.HandleGetPositionBySymbol)
 	r.Get("/api/risk", apiServer.HandleGetRiskStatus)
 	r.Get("/api/stats", apiServer.HandleGetStats)
 	r.Get("/api/trades", apiServer.HandleGetTrades)
+	r.Post("/api/token", apiServer.HandleGenerateToken)
+
+	// Protected routes
+	r.With(internal.JWTAuthMiddleware(apiServer.JWTManager)).Post("/api/trades", apiServer.HandleExecuteTrade)
+	r.With(internal.JWTAuthMiddleware(apiServer.JWTManager)).Post("/api/trades/sell-all", apiServer.HandleSellAllTrades)
+	r.With(internal.JWTAuthMiddleware(apiServer.JWTManager)).Delete("/api/positions/{symbol}", apiServer.HandleClosePosition)
 
 	log.Println("Starting API server on :8080")
 	if err := http.ListenAndServe(":8080", r); err != nil {

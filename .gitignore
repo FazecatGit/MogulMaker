@@ -1,3 +1,4 @@
 .env
 to do list.txt
 plans
+cmd/api/full-test.ps1
