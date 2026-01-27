@@ -123,6 +123,12 @@ func main() {
 	r.Get("/api/trades", apiServer.HandleGetTrades)
 	r.Post("/api/token", apiServer.HandleGenerateToken)
 
+	//Analytics & Monitoring
+	r.Get("/api/portfolio-summary", apiServer.HandlePortfolioSummary)
+	r.Get("/api/risk-adjustments", apiServer.HandleRiskAdjustments)
+	r.Get("/api/performance-metrics", apiServer.HandlePerformanceMetrics)
+	r.Get("/api/risk-alerts", apiServer.HandleRiskAlerts)
+
 	// Protected routes
 	r.With(internal.JWTAuthMiddleware(apiServer.JWTManager)).Post("/api/trades", apiServer.HandleExecuteTrade)
 	r.With(internal.JWTAuthMiddleware(apiServer.JWTManager)).Post("/api/trades/sell-all", apiServer.HandleSellAllTrades)

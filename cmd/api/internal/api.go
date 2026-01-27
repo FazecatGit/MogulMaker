@@ -27,7 +27,6 @@ type API struct {
 }
 
 func (api *API) HandleGetPositions(w http.ResponseWriter, r *http.Request) {
-	// Fetch directly from Alpaca, not from memory
 	alpacaPositions, err := api.AlpacaClient.GetPositions()
 	if err != nil {
 		log.Printf("Error fetching positions from Alpaca: %v", err)
@@ -36,7 +35,9 @@ func (api *API) HandleGetPositions(w http.ResponseWriter, r *http.Request) {
 	}
 
 	response := map[string]interface{}{
+		"count":     len(alpacaPositions),
 		"positions": alpacaPositions,
+		"timestamp": time.Now().Unix(),
 		"risk_status": map[string]interface{}{
 			"enabled": api.RiskManager != nil,
 		},
@@ -353,7 +354,6 @@ func (api *API) HandleClosePosition(w http.ResponseWriter, r *http.Request) {
 	WriteJSON(w, http.StatusOK, response)
 }
 
-// HandleGenerateToken generates a JWT token
 func (api *API) HandleGenerateToken(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		UserID string `json:"user_id"`
@@ -381,6 +381,114 @@ func (api *API) HandleGenerateToken(w http.ResponseWriter, r *http.Request) {
 		"token":      token,
 		"user_id":    req.UserID,
 		"expires_at": time.Now().Add(24 * time.Hour).Unix(),
+	}
+
+	WriteJSON(w, http.StatusOK, response)
+}
+
+func (api *API) HandlePortfolioSummary(w http.ResponseWriter, r *http.Request) {
+	symbol := r.URL.Query().Get("symbol")
+
+	alpacaPositions, err := api.AlpacaClient.GetPositions()
+	if err != nil {
+		log.Printf("Error fetching positions from Alpaca: %v", err)
+		WriteError(w, http.StatusInternalServerError, "Failed to fetch portfolio summary")
+		return
+	}
+
+	var filteredPositions []alpaca.Position
+	if symbol != "" {
+		for _, pos := range alpacaPositions {
+			if pos.Symbol == symbol {
+				filteredPositions = append(filteredPositions, pos)
+			}
+		}
+	} else {
+		filteredPositions = alpacaPositions
+	}
+
+	// Calculate portfolio metrics
+	var totalValue decimal.Decimal
+	var totalCost decimal.Decimal
+	var totalGain decimal.Decimal
+
+	for _, pos := range filteredPositions {
+		if pos.MarketValue != nil {
+			totalValue = totalValue.Add(*pos.MarketValue)
+		}
+		totalCost = totalCost.Add(pos.CostBasis)
+
+		if pos.UnrealizedPL != nil {
+			totalGain = totalGain.Add(*pos.UnrealizedPL)
+		}
+	}
+
+	response := map[string]interface{}{
+		"total_positions": len(filteredPositions),
+		"total_value":     totalValue.String(),
+		"total_cost":      totalCost.String(),
+		"total_gain":      totalGain.String(),
+		"positions":       filteredPositions,
+	}
+
+	WriteJSON(w, http.StatusOK, response)
+}
+
+func (api *API) HandleRiskAdjustments(w http.ResponseWriter, r *http.Request) {
+	if api.RiskManager == nil {
+		WriteError(w, http.StatusInternalServerError, "Risk manager not initialized")
+		return
+	}
+
+	// Get risk events (most recent risk data)
+	riskEvents := api.RiskManager.GetRiskEvents(50)
+
+	response := map[string]interface{}{
+		"account_balance":      api.RiskManager.GetAccountBalance(),
+		"daily_loss_percent":   api.RiskManager.GetDailyLossPercent(),
+		"daily_loss_limit_hit": api.RiskManager.IsDailyLossLimitHit(),
+		"recent_events":        riskEvents,
+	}
+
+	WriteJSON(w, http.StatusOK, response)
+}
+func (api *API) HandlePerformanceMetrics(w http.ResponseWriter, r *http.Request) {
+	if api.TradeMonitor == nil {
+		WriteError(w, http.StatusInternalServerError, "Trade monitor not initialized")
+		return
+	}
+
+	// Get position monitors for real-time tracking
+	monitors := api.TradeMonitor.GetPositionMonitors()
+
+	response := map[string]interface{}{
+		"monitors":  monitors,
+		"timestamp": time.Now().Unix(),
+	}
+
+	WriteJSON(w, http.StatusOK, response)
+}
+
+func (api *API) HandleRiskAlerts(w http.ResponseWriter, r *http.Request) {
+	if api.RiskManager == nil {
+		WriteError(w, http.StatusInternalServerError, "Risk manager not initialized")
+		return
+	}
+
+	limitStr := r.URL.Query().Get("limit")
+	limit := 50
+	if limitStr != "" {
+		if parsedLimit, err := strconv.Atoi(limitStr); err == nil && parsedLimit > 0 {
+			limit = parsedLimit
+		}
+	}
+
+	// Get recent risk events as alerts
+	events := api.RiskManager.GetRiskEvents(limit)
+
+	response := map[string]interface{}{
+		"count":  len(events),
+		"alerts": events,
 	}
 
 	WriteJSON(w, http.StatusOK, response)
