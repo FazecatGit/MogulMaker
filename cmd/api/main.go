@@ -129,6 +129,19 @@ func main() {
 	r.Get("/api/performance-metrics", apiServer.HandlePerformanceMetrics)
 	r.Get("/api/risk-alerts", apiServer.HandleRiskAlerts)
 
+	//Backtesting & Analysis
+	r.Get("/api/backtest", apiServer.HandleBacktest)
+	r.Get("/api/backtest/results", apiServer.HandleBacktestResults)
+	r.Get("/api/backtest/status", apiServer.HandleBacktestStatus)
+	r.Get("/api/analysis/symbol", apiServer.HandleSymbolAnalysis)
+	r.Get("/api/analysis/report", apiServer.HandleAnalysisReport)
+
+	// Watchlist & Scanner
+	r.Get("/api/watchlist", apiServer.HandleGetWatchlist)
+	r.Post("/api/watchlist", apiServer.HandleAddToWatchlist)
+	r.Delete("/api/watchlist", apiServer.HandleRemoveFromWatchlist)
+	r.Get("/api/scout", apiServer.HandleScoutStocks)
+
 	// Protected routes
 	r.With(internal.JWTAuthMiddleware(apiServer.JWTManager)).Post("/api/trades", apiServer.HandleExecuteTrade)
 	r.With(internal.JWTAuthMiddleware(apiServer.JWTManager)).Post("/api/trades/sell-all", apiServer.HandleSellAllTrades)

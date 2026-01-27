@@ -288,6 +288,7 @@ func (q *Queries) GetATRPrices(ctx context.Context, arg GetATRPricesParams) ([]G
 const getAllOpenTrades = `-- name: GetAllOpenTrades :many
 SELECT id, symbol, side, quantity, price, total_value, alpaca_order_id, status, created_at
 FROM trades
+WHERE status IN ('PENDING', 'ACCEPTED', 'FILLED', 'PARTIALLY_FILLED')
 ORDER BY created_at DESC
 `
 
@@ -1050,6 +1051,18 @@ DELETE FROM skip_backlog WHERE symbol = $1
 // Remove symbol from skip backlog after rechecking
 func (q *Queries) RemoveFromSkipBacklog(ctx context.Context, symbol string) error {
 	_, err := q.db.ExecContext(ctx, removeFromSkipBacklog, symbol)
+	return err
+}
+
+const removeFromWatchlist = `-- name: RemoveFromWatchlist :exec
+UPDATE watchlist
+SET status = 'removed', last_updated = CURRENT_TIMESTAMP
+WHERE symbol = $1
+`
+
+// Remove symbol from watchlist by setting status to 'removed'
+func (q *Queries) RemoveFromWatchlist(ctx context.Context, symbol string) error {
+	_, err := q.db.ExecContext(ctx, removeFromWatchlist, symbol)
 	return err
 }
 

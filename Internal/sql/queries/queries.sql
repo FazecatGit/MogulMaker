@@ -137,6 +137,12 @@ UPDATE watchlist
 SET score = $1, last_updated = CURRENT_TIMESTAMP
 WHERE symbol = $2;
 
+-- name: RemoveFromWatchlist :exec
+-- Remove symbol from watchlist by setting status to 'removed'
+UPDATE watchlist
+SET status = 'removed', last_updated = CURRENT_TIMESTAMP
+WHERE symbol = $1;
+
 -- name: AddWatchlistHistory :exec
 -- Log score change with full analysis data (as JSON)
 INSERT INTO watchlist_history (watchlist_id, old_score, new_score, analysis_data, timestamp)

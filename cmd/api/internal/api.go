@@ -2,13 +2,16 @@ package internal
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"log"
 	"net/http"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/alpacahq/alpaca-trade-api-go/v3/alpaca"
+	datafeed "github.com/fazecat/mogulmaker/Internal/database"
 	database "github.com/fazecat/mogulmaker/Internal/database/sqlc"
 	"github.com/fazecat/mogulmaker/Internal/handlers/monitoring"
 	"github.com/fazecat/mogulmaker/Internal/handlers/risk"
@@ -24,6 +27,8 @@ type API struct {
 	TradeMonitor    *monitoring.Monitor
 	AlpacaClient    *alpaca.Client
 	JWTManager      *JWTManager
+	backtestCache   map[string]map[string]interface{} // backtestID -> results
+	backtestMutex   sync.RWMutex
 }
 
 func (api *API) HandleGetPositions(w http.ResponseWriter, r *http.Request) {
@@ -211,7 +216,6 @@ func (api *API) HandleSellAllTrades(w http.ResponseWriter, r *http.Request) {
 	var failedSymbols []map[string]interface{}
 
 	for _, pos := range positions {
-		// Close position via Alpaca API
 		_, err := api.AlpacaClient.ClosePosition(pos.Symbol, alpaca.ClosePositionRequest{})
 		if err != nil {
 			failedSymbols = append(failedSymbols, map[string]interface{}{
@@ -235,7 +239,6 @@ func (api *API) HandleSellAllTrades(w http.ResponseWriter, r *http.Request) {
 	WriteJSON(w, http.StatusOK, response)
 }
 
-// HandleGetPositionBySymbol gets a specific position by symbol
 func (api *API) HandleGetPositionBySymbol(w http.ResponseWriter, r *http.Request) {
 	symbol := r.PathValue("symbol")
 	if symbol == "" {
@@ -252,7 +255,6 @@ func (api *API) HandleGetPositionBySymbol(w http.ResponseWriter, r *http.Request
 	WriteJSON(w, http.StatusOK, position)
 }
 
-// HandleExecuteTrade executes a trade
 func (api *API) HandleExecuteTrade(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Symbol   string  `json:"symbol"`
@@ -386,6 +388,7 @@ func (api *API) HandleGenerateToken(w http.ResponseWriter, r *http.Request) {
 	WriteJSON(w, http.StatusOK, response)
 }
 
+// 5.3
 func (api *API) HandlePortfolioSummary(w http.ResponseWriter, r *http.Request) {
 	symbol := r.URL.Query().Get("symbol")
 
@@ -440,7 +443,6 @@ func (api *API) HandleRiskAdjustments(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Get risk events (most recent risk data)
 	riskEvents := api.RiskManager.GetRiskEvents(50)
 
 	response := map[string]interface{}{
@@ -458,7 +460,6 @@ func (api *API) HandlePerformanceMetrics(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	// Get position monitors for real-time tracking
 	monitors := api.TradeMonitor.GetPositionMonitors()
 
 	response := map[string]interface{}{
@@ -483,12 +484,354 @@ func (api *API) HandleRiskAlerts(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Get recent risk events as alerts
 	events := api.RiskManager.GetRiskEvents(limit)
 
 	response := map[string]interface{}{
 		"count":  len(events),
 		"alerts": events,
+	}
+
+	WriteJSON(w, http.StatusOK, response)
+}
+
+//5.4
+
+func (api *API) HandleBacktest(w http.ResponseWriter, r *http.Request) {
+	symbol := r.URL.Query().Get("symbol")
+	if symbol == "" {
+		WriteError(w, http.StatusBadRequest, "Symbol is required for backtest")
+		return
+	}
+
+	openPositions := api.PositionManager.GetOpenPositions()
+	for _, pos := range openPositions {
+		if pos.Symbol == symbol {
+			WriteError(w, http.StatusBadRequest, "Cannot run backtest on an open position")
+			return
+		}
+	}
+
+	startDate := r.URL.Query().Get("start_date")
+	endDate := r.URL.Query().Get("end_date")
+	capitalStr := r.URL.Query().Get("capital")
+
+	if startDate == "" || endDate == "" {
+		WriteError(w, http.StatusBadRequest, "start_date and end_date are required (YYYY-MM-DD)")
+		return
+	}
+
+	// Parse capital amount
+	capital := 100000.0
+	if capitalStr != "" {
+		if parsedCap, err := strconv.ParseFloat(capitalStr, 64); err == nil && parsedCap > 0 {
+			capital = parsedCap
+		}
+	} else if api.RiskManager != nil {
+		capital = api.RiskManager.GetAccountBalance()
+	}
+
+	// Fetch historical bars for the symbol
+	historicalBars, err := datafeed.GetAlpacaBars(symbol, "1Day", 100, "")
+	if err != nil || len(historicalBars) == 0 {
+		log.Printf("Error fetching historical bars: %v", err)
+		WriteError(w, http.StatusInternalServerError, "Failed to fetch historical data for backtest")
+		return
+	}
+
+	// Run backtest with TradeResult from metrics.RunBacktest
+	trades, err := metrics.RunBacktest(symbol, historicalBars, capital)
+	if err != nil {
+		log.Printf("Error running backtest: %v", err)
+		WriteError(w, http.StatusInternalServerError, "Failed to execute backtest")
+		return
+	}
+
+	// Calculate metrics from trades
+	winRate := metrics.CalculateWinRate(trades)
+	sharpeRatio := metrics.CalculateSharpeRatio(trades, 0.02)
+	sortinoRatio := metrics.CalculateSortinoRatio(trades, 0.02)
+
+	winningTrades := 0
+	totalPnL := 0.0
+	largestWin := 0.0
+	largestLoss := 0.0
+
+	for _, trade := range trades {
+		totalPnL += trade.PnL
+		if trade.PnL > 0 {
+			winningTrades++
+			if trade.PnL > largestWin {
+				largestWin = trade.PnL
+			}
+		} else if trade.PnL < 0 {
+			if trade.PnL < largestLoss {
+				largestLoss = trade.PnL
+			}
+		}
+	}
+
+	finalBalance := capital + totalPnL
+	totalReturnPct := (totalPnL / capital) * 100
+	losingTrades := len(trades) - winningTrades
+
+	backtestID := symbol + "_" + time.Now().Format("20060102150405")
+
+	response := map[string]interface{}{
+		"backtest_id":      backtestID,
+		"symbol":           symbol,
+		"status":           "completed",
+		"start_date":       startDate,
+		"end_date":         endDate,
+		"initial_capital":  capital,
+		"final_balance":    finalBalance,
+		"total_return_pct": totalReturnPct,
+		"sharpe_ratio":     sharpeRatio,
+		"sortino_ratio":    sortinoRatio,
+		"win_rate":         winRate,
+		"total_trades":     len(trades),
+		"winning_trades":   winningTrades,
+		"losing_trades":    losingTrades,
+		"largest_win":      largestWin,
+		"largest_loss":     largestLoss,
+		"created_at":       time.Now().Unix(),
+	}
+
+	// Cache the backtest results
+	api.backtestMutex.Lock()
+	if api.backtestCache == nil {
+		api.backtestCache = make(map[string]map[string]interface{})
+	}
+	api.backtestCache[backtestID] = response
+	api.backtestMutex.Unlock()
+
+	WriteJSON(w, http.StatusOK, response)
+}
+
+func (api *API) HandleBacktestResults(w http.ResponseWriter, r *http.Request) {
+	backtestID := r.URL.Query().Get("id")
+	if backtestID == "" {
+		WriteError(w, http.StatusBadRequest, "Backtest ID is required")
+		return
+	}
+
+	// Retrieve backtest results from cache using backtestID
+	api.backtestMutex.RLock()
+	results, exists := api.backtestCache[backtestID]
+	api.backtestMutex.RUnlock()
+
+	if !exists {
+		WriteError(w, http.StatusNotFound, "Backtest results not found")
+		return
+	}
+
+	WriteJSON(w, http.StatusOK, results)
+}
+
+func (api *API) HandleBacktestStatus(w http.ResponseWriter, r *http.Request) {
+	backtestID := r.URL.Query().Get("id")
+	if backtestID == "" {
+		WriteError(w, http.StatusBadRequest, "Backtest ID is required")
+		return
+	}
+
+	// Check backtest status from cache
+	api.backtestMutex.RLock()
+	results, exists := api.backtestCache[backtestID]
+	api.backtestMutex.RUnlock()
+
+	if !exists {
+		WriteError(w, http.StatusNotFound, "Backtest not found")
+		return
+	}
+
+	status := "completed"
+	if resultsStatus, ok := results["status"].(string); ok {
+		status = resultsStatus
+	}
+
+	response := map[string]interface{}{
+		"backtest_id": backtestID,
+		"status":      status,
+		"progress":    100,
+	}
+
+	WriteJSON(w, http.StatusOK, response)
+}
+
+func (api *API) HandleSymbolAnalysis(w http.ResponseWriter, r *http.Request) {
+	symbol := r.URL.Query().Get("symbol")
+	if symbol == "" {
+		WriteError(w, http.StatusBadRequest, "Symbol is required")
+		return
+	}
+
+	// Return basic analysis structure, needs to be implemented
+	response := map[string]interface{}{
+		"symbol":            symbol,
+		"status":            "not_analyzed",
+		"rsi_signals":       nil,
+		"support_levels":    nil,
+		"resistance_levels": nil,
+		"trend":             "neutral",
+		"message":           "Symbol analysis not implemented yet",
+	}
+
+	WriteJSON(w, http.StatusOK, response)
+}
+
+func (api *API) HandleAnalysisReport(w http.ResponseWriter, r *http.Request) {
+	symbol := r.URL.Query().Get("symbol")
+	if symbol == "" {
+		WriteError(w, http.StatusBadRequest, "Symbol is required for analysis report")
+		return
+	}
+
+	response := map[string]interface{}{
+		"symbol":          symbol,
+		"generated_at":    time.Now().Unix(),
+		"analysis":        nil,
+		"recommendations": nil,
+		"message":         "Analysis report generation not implemented yet",
+	}
+
+	WriteJSON(w, http.StatusOK, response)
+}
+
+func (api *API) HandleGetWatchlist(w http.ResponseWriter, r *http.Request) {
+	watchlist, err := api.Queries.GetWatchlist(context.Background())
+	if err != nil {
+		log.Printf("Error fetching watchlist: %v", err)
+		WriteError(w, http.StatusInternalServerError, "Failed to fetch watchlist")
+		return
+	}
+
+	// Extract just the symbols and scores
+	var symbols []map[string]interface{}
+	for _, item := range watchlist {
+		symbols = append(symbols, map[string]interface{}{
+			"symbol":  item.Symbol,
+			"score":   item.Score,
+			"type":    item.AssetType,
+			"reason":  item.Reason,
+			"added":   item.AddedDate,
+			"updated": item.LastUpdated,
+		})
+	}
+
+	response := map[string]interface{}{
+		"watchlist": symbols,
+		"count":     len(watchlist),
+	}
+
+	WriteJSON(w, http.StatusOK, response)
+}
+
+func (api *API) HandleAddToWatchlist(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Symbol string  `json:"symbol"`
+		Score  float32 `json:"score"`
+		Reason string  `json:"reason"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		WriteError(w, http.StatusBadRequest, "Invalid JSON body")
+		return
+	}
+
+	if req.Symbol == "" {
+		WriteError(w, http.StatusBadRequest, "Symbol is required")
+		return
+	}
+
+	// Add to watchlist in database
+	params := database.AddToWatchlistParams{
+		Symbol:    req.Symbol,
+		AssetType: "stock",
+		Score:     req.Score,
+		Reason: sql.NullString{
+			String: req.Reason,
+			Valid:  req.Reason != "",
+		},
+	}
+
+	watchlistID, err := api.Queries.AddToWatchlist(context.Background(), params)
+	if err != nil {
+		log.Printf("Error adding to watchlist: %v", err)
+		WriteError(w, http.StatusInternalServerError, "Failed to add to watchlist")
+		return
+	}
+
+	response := map[string]interface{}{
+		"success":      true,
+		"watchlist_id": watchlistID,
+		"symbol":       req.Symbol,
+		"score":        req.Score,
+		"message":      "Symbol added to watchlist",
+	}
+
+	WriteJSON(w, http.StatusCreated, response)
+}
+
+func (api *API) HandleRemoveFromWatchlist(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Symbol string `json:"symbol"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		WriteError(w, http.StatusBadRequest, "Invalid JSON body")
+		return
+	}
+
+	if req.Symbol == "" {
+		WriteError(w, http.StatusBadRequest, "Symbol is required")
+		return
+	}
+
+	// Remove from watchlist in database
+	err := api.Queries.RemoveFromWatchlist(context.Background(), req.Symbol)
+	if err != nil {
+		log.Printf("Error removing from watchlist: %v", err)
+		WriteError(w, http.StatusInternalServerError, "Failed to remove from watchlist")
+		return
+	}
+
+	response := map[string]interface{}{
+		"success": true,
+		"symbol":  req.Symbol,
+		"message": "Symbol removed from watchlist",
+	}
+
+	WriteJSON(w, http.StatusOK, response)
+}
+
+func (api *API) HandleScoutStocks(w http.ResponseWriter, r *http.Request) {
+	// Scout/scanner endpoint - find opportunities
+	limitStr := r.URL.Query().Get("limit")
+	limit := 50
+	if limitStr != "" {
+		if parsedLimit, err := strconv.Atoi(limitStr); err == nil && parsedLimit > 0 {
+			limit = parsedLimit
+		}
+	}
+
+	// Fetch scan logs from database
+	scanLogs, err := api.Queries.GetAllScanLogs(context.Background())
+	if err != nil {
+		log.Printf("Error fetching scan logs: %v", err)
+		WriteError(w, http.StatusInternalServerError, "Failed to fetch scan logs")
+		return
+	}
+
+	// Limit results
+	if len(scanLogs) > limit {
+		scanLogs = scanLogs[:limit]
+	}
+
+	response := map[string]interface{}{
+		"scanned_count": len(scanLogs),
+		"limit":         limit,
+		"opportunities": scanLogs,
+		"message":       "Scanner results from database",
 	}
 
 	WriteJSON(w, http.StatusOK, response)

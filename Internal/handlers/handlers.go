@@ -698,8 +698,10 @@ func HandleWatchlistMenu(ctx context.Context, cfg *config.Config, q *database.Qu
 		fmt.Println("\n--- Watchlist Menu ---")
 		fmt.Println("1. Scan Watchlist")
 		fmt.Println("2. View Watchlist")
-		fmt.Println("3. Back")
-		fmt.Print("Enter choice (1-3): ")
+		fmt.Println("3. Add to Watchlist")
+		fmt.Println("4. Remove from Watchlist")
+		fmt.Println("5. Back")
+		fmt.Print("Enter choice (1-5): ")
 
 		var choice int
 		_, err := fmt.Scanln(&choice)
@@ -714,11 +716,87 @@ func HandleWatchlistMenu(ctx context.Context, cfg *config.Config, q *database.Qu
 		case 2:
 			HandleWatchlist(ctx, q)
 		case 3:
+			HandleAddToWatchlistInteractive(ctx, q)
+		case 4:
+			HandleRemoveFromWatchlistInteractive(ctx, q)
+		case 5:
 			return
 		default:
 			fmt.Println("Invalid choice. Try again.")
 		}
 	}
+}
+
+func HandleAddToWatchlistInteractive(ctx context.Context, q *database.Queries) {
+	fmt.Print("\nEnter symbol to add (e.g., AAPL): ")
+	var symbol string
+	_, err := fmt.Scanln(&symbol)
+	if err != nil || symbol == "" {
+		fmt.Println("Invalid symbol")
+		return
+	}
+	symbol = strings.ToUpper(symbol)
+
+	fmt.Print("Enter reason (optional): ")
+	scanner := bufio.NewScanner(os.Stdin)
+	reason := ""
+	if scanner.Scan() {
+		reason = scanner.Text()
+	}
+
+	// Use default score of 5.0 (system will calculate actual score on next scan)
+	defaultScore := float32(5.0)
+
+	params := database.AddToWatchlistParams{
+		Symbol:    symbol,
+		AssetType: "stock",
+		Score:     defaultScore,
+		Reason: sql.NullString{
+			String: reason,
+			Valid:  reason != "",
+		},
+	}
+
+	watchlistID, err := q.AddToWatchlist(ctx, params)
+	if err != nil {
+		fmt.Printf("Error adding to watchlist: %v\n", err)
+		return
+	}
+
+	fmt.Printf("Successfully added %s to watchlist (ID: %d)\n", symbol, watchlistID)
+}
+
+func HandleRemoveFromWatchlistInteractive(ctx context.Context, q *database.Queries) {
+	fmt.Print("\nEnter symbol to remove (e.g., AAPL): ")
+	var symbol string
+	_, err := fmt.Scanln(&symbol)
+	if err != nil || symbol == "" {
+		fmt.Println("Invalid symbol")
+		return
+	}
+	symbol = strings.ToUpper(symbol)
+
+	watchlistItem, err := q.GetWatchlistBySymbol(ctx, symbol)
+	if err != nil {
+		fmt.Printf("Symbol %s not found in watchlist\n", symbol)
+		return
+	}
+
+	fmt.Printf("Remove %s (Score: %.2f) from watchlist? (yes/no): ", watchlistItem.Symbol, watchlistItem.Score)
+	var confirm string
+	_, err = fmt.Scanln(&confirm)
+	if err != nil || (confirm != "yes" && confirm != "y") {
+		fmt.Println("Cancelled")
+		return
+	}
+
+	err = q.RemoveFromWatchlist(ctx, symbol)
+	if err != nil {
+		fmt.Printf("Error removing from watchlist: %v\n", err)
+		return
+	}
+
+	fmt.Printf("Successfully removed %s from watchlist\n", symbol)
 }
 
 func HandleAnalyzeAssetType(ctx context.Context, cfg *config.Config, q *database.Queries, newsStorage *newsscraping.NewsStorage, finnhubClient *newsscraping.FinnhubClient) {
