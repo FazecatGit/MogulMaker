@@ -33,6 +33,7 @@ func CalculateVolumeStats(volumes []int64) (mean float64, stdDev float64) {
 
 	mean = utils.Average(floatVolumes)
 	stdDev = utils.StandardDeviation(floatVolumes)
+	mean = utils.Max(mean, 1.0) // prevent division by zero
 
 	return mean, stdDev
 }
@@ -87,7 +88,7 @@ func createWhaleEvent(symbol string, bar types.Bar, zScore float64, meanVolume f
 	whaleEvent := WhaleEvent{
 		Timestamp:   bar.Timestamp,
 		Symbol:      symbol,
-		Direction:   direction, // "BUY" or "SELL"
+		Direction:   direction,
 		Volume:      bar.Volume,
 		ZScore:      zScore,
 		ClosePrice:  bar.Close,
