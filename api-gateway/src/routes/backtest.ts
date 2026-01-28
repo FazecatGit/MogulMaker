@@ -36,11 +36,36 @@ router.get('/', async (req: Request, res: Response) => {
 // GET /api/backtest/results - Get cached results
 router.get('/results', async (req: Request, res: Response) => {
   try {
-    const response = await axios.get(`${GO_API_URL}/api/backtest/results`);
+    const { id } = req.query;
+
+    if (!id) {
+      res.status(400).json({ error: 'Backtest ID is required' });
+      return;
+    }
+
+    const response = await axios.get(`${GO_API_URL}/api/backtest/results?id=${id}`);
     res.json(response.data);
   } catch (error: any) {
     console.error('Get results error:', error.message);
     res.status(500).json({ error: 'Failed to fetch results' });
+  }
+});
+
+// GET /api/backtest/status - Get backtest status
+router.get('/status', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.query;
+
+    if (!id) {
+      res.status(400).json({ error: 'Backtest ID is required' });
+      return;
+    }
+
+    const response = await axios.get(`${GO_API_URL}/api/backtest/status?id=${id}`);
+    res.json(response.data);
+  } catch (error: any) {
+    console.error('Backtest status error:', error.message);
+    res.status(500).json({ error: 'Failed to fetch backtest status' });
   }
 });
 
