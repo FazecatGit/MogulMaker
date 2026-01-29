@@ -1,8 +1,7 @@
 import { Router, Request, Response } from 'express';
-import axios from 'axios';
+import apiClient from '../utils/apiClient';
 
 const router = Router();
-const GO_API_URL = 'http://localhost:8080';
 
 // POST /api/token - Generate JWT token
 router.post('/', async (req: Request, res: Response) => {
@@ -12,11 +11,8 @@ router.post('/', async (req: Request, res: Response) => {
       return;
     }
 
-    const response = await axios.post(
-      `${GO_API_URL}/api/token`,
-      req.body
-    );
-    res.json(response.data);
+    const data = await apiClient.post('/api/token', req.body);
+    res.json(data);
   } catch (error: any) {
     console.error('Token generation error:', error.message);
     res.status(500).json({ error: 'Failed to generate token' });

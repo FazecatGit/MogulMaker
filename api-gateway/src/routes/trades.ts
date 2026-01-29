@@ -1,14 +1,13 @@
 import { Router, Request, Response } from 'express';
-import axios from 'axios';
+import apiClient from '../utils/apiClient';
 
 const router = Router();
-const GO_API_URL = 'http://localhost:8080';
 
 // GET /api/trades - Get all trades
 router.get('/', async (req: Request, res: Response) => {
   try {
-    const response = await axios.get(`${GO_API_URL}/api/trades`);
-    res.json(response.data);
+    const data = await apiClient.get('/api/trades');
+    res.json(data);
   } catch (error: any) {
     console.error('Get trades error:', error.message);
     res.status(500).json({ error: 'Failed to fetch trades' });
@@ -25,14 +24,8 @@ router.post('/', async (req: Request, res: Response) => {
       return;
     }
 
-    const response = await axios.post(
-      `${GO_API_URL}/api/trades`,
-      req.body,
-      {
-        headers: { Authorization: `Bearer ${token}` }
-      }
-    );
-    res.json(response.data);
+    const data = await apiClient.post('/api/trades', req.body);
+    res.json(data);
   } catch (error: any) {
     console.error('Execute trade error:', error.message);
     res.status(500).json({ error: 'Failed to execute trade' });
@@ -49,14 +42,8 @@ router.post('/sell-all', async (req: Request, res: Response) => {
       return;
     }
 
-    const response = await axios.post(
-      `${GO_API_URL}/api/trades/sell-all`,
-      req.body,
-      {
-        headers: { Authorization: `Bearer ${token}` }
-      }
-    );
-    res.json(response.data);
+    const data = await apiClient.post('/api/trades/sell-all', req.body);
+    res.json(data);
   } catch (error: any) {
     console.error('Sell all error:', error.message);
     res.status(500).json({ error: 'Failed to sell all trades' });

@@ -1,8 +1,7 @@
 import { Router, Request, Response } from 'express';
-import axios from 'axios';
+import apiClient from '../utils/apiClient';
 
 const router = Router();
-const GO_API_URL = 'http://localhost:8080';
 
 // GET /api/backtest - Proxy backtest request
 router.get('/', async (req: Request, res: Response) => {
@@ -23,10 +22,10 @@ router.get('/', async (req: Request, res: Response) => {
     queryParams.append('start_date', startDate);
     queryParams.append('end_date', endDate);
 
-    const response = await axios.get(
-      `${GO_API_URL}/api/backtest?${queryParams.toString()}`
+    const data = await apiClient.get(
+      `/api/backtest?${queryParams.toString()}`
     );
-    res.json(response.data);
+    res.json(data);
   } catch (error: any) {
     console.error('Backtest error:', error.message);
     res.status(500).json({ error: 'Failed to run backtest' });
@@ -43,8 +42,8 @@ router.get('/results', async (req: Request, res: Response) => {
       return;
     }
 
-    const response = await axios.get(`${GO_API_URL}/api/backtest/results?id=${id}`);
-    res.json(response.data);
+    const data = await apiClient.get(`/api/backtest/results?id=${id}`);
+    res.json(data);
   } catch (error: any) {
     console.error('Get results error:', error.message);
     res.status(500).json({ error: 'Failed to fetch results' });
@@ -61,8 +60,8 @@ router.get('/status', async (req: Request, res: Response) => {
       return;
     }
 
-    const response = await axios.get(`${GO_API_URL}/api/backtest/status?id=${id}`);
-    res.json(response.data);
+    const data = await apiClient.get(`/api/backtest/status?id=${id}`);
+    res.json(data);
   } catch (error: any) {
     console.error('Backtest status error:', error.message);
     res.status(500).json({ error: 'Failed to fetch backtest status' });

@@ -1,14 +1,13 @@
 import { Router, Request, Response } from 'express';
-import axios from 'axios';
+import apiClient from '../utils/apiClient';
 
 const router = Router();
-const GO_API_URL = 'http://localhost:8080';
 
 // GET /api/positions - Get all positions
 router.get('/', async (req: Request, res: Response) => {
   try {
-    const response = await axios.get(`${GO_API_URL}/api/positions`);
-    res.json(response.data);
+    const data = await apiClient.get('/api/positions');
+    res.json(data);
   } catch (error: any) {
     console.error('Get positions error:', error.message);
     res.status(500).json({ error: 'Failed to fetch positions' });
@@ -25,8 +24,8 @@ router.get('/:symbol', async (req: Request, res: Response) => {
       return;
     }
 
-    const response = await axios.get(`${GO_API_URL}/api/positions/${symbol}`);
-    res.json(response.data);
+    const data = await apiClient.get(`/api/positions/${symbol}`);
+    res.json(data);
   } catch (error: any) {
     console.error('Get position error:', error.message);
     res.status(500).json({ error: 'Failed to fetch position' });
@@ -44,13 +43,8 @@ router.delete('/:symbol', async (req: Request, res: Response) => {
       return;
     }
 
-    const response = await axios.delete(
-      `${GO_API_URL}/api/positions/${symbol}`,
-      {
-        headers: token ? { Authorization: `Bearer ${token}` } : {}
-      }
-    );
-    res.json(response.data);
+    const data = await apiClient.delete(`/api/positions/${symbol}`);
+    res.json(data);
   } catch (error: any) {
     console.error('Close position error:', error.message);
     res.status(500).json({ error: 'Failed to close position' });
