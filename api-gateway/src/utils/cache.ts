@@ -69,7 +69,7 @@ class Cache {
     });
     }, intervalMs);
 }
-    private maxCacheSize() {
+    private maxCacheSize(intervalMs: number = 300000) {
     setInterval(() => {
         while (this.size() > this.maxSize) {
             let oldestKey: string | null = null;
@@ -87,7 +87,7 @@ class Cache {
             }
         }
 
-    }, 300000); // Check every 5 minutes
+    }, intervalMs);
     }
 }
 
