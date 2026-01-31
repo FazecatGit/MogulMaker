@@ -212,6 +212,18 @@ class DataError extends APIError {
     }
 }
 
+class RateLimitError extends APIError {
+    constructor(message: string, code: string = 'RATE_LIMIT_EXCEEDED', options?: {
+        requestId?: string;
+        traceId?: string;
+        details?: Record<string, any>;
+        cause?: string;
+    }) {
+    super(message, 429, code, options);
+    this.name = 'RateLimitError';
+    }
+}
+
 function formatError(error: APIError): ErrorEntry {
   return {
     error: error.message,

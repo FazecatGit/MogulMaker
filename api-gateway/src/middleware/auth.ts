@@ -14,7 +14,7 @@ class JWTManager {
   private secretKey: string;
 
   constructor() {
-    this.secretKey = process.env.JWT_SECRET || 'your-secret-key-change-this-in-production';
+    this.secretKey = process.env.JWT_SECRET_KEY || 'your-secret-key-change-this-in-production';
   }
 
   validateToken(tokenString: string): Claims {

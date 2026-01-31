@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express';
 import apiClient from '../utils/apiClient';
+import authMiddleware from '../middleware/auth';
 
 const router = Router();
 
@@ -15,7 +16,7 @@ router.get('/', async (req: Request, res: Response) => {
 });
 
 // POST /api/trades - Execute trade (protected)
-router.post('/', async (req: Request, res: Response) => {
+router.post('/',authMiddleware ,async (req: Request, res: Response) => {
   try {
     const token = req.headers.authorization?.split(' ')[1];
 
@@ -33,7 +34,7 @@ router.post('/', async (req: Request, res: Response) => {
 });
 
 // POST /api/trades/sell-all - Sell all trades (protected)
-router.post('/sell-all', async (req: Request, res: Response) => {
+router.post('/sell-all', authMiddleware ,async (req: Request, res: Response) => {
   try {
     const token = req.headers.authorization?.split(' ')[1];
 

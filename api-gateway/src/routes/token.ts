@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express';
 import apiClient from '../utils/apiClient';
+import authMiddleware from '../middleware/auth';
 
 const router = Router();
 

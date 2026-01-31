@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express';
 import apiClient from '../utils/apiClient';
+import authMiddleware from '../middleware/auth';
 
 const router = Router();
 
@@ -15,7 +16,7 @@ router.get('/', async (req: Request, res: Response) => {
 });
 
 // POST /api/watchlist - Add symbol to watchlist
-router.post('/', async (req: Request, res: Response) => {
+router.post('/',authMiddleware ,async (req: Request, res: Response) => {
   try {
     const { symbol, reason } = req.body;
 
@@ -36,7 +37,7 @@ router.post('/', async (req: Request, res: Response) => {
 });
 
 // DELETE /api/watchlist - Remove symbol from watchlist
-router.delete('/', async (req: Request, res: Response) => {
+router.delete('/',authMiddleware ,async (req: Request, res: Response) => {
   try {
     const { symbol } = req.body;
 

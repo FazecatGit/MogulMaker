@@ -12,9 +12,17 @@ import analysisRoutes from './routes/analysis';
 import tokenRoutes from './routes/token';
 import requestIdMiddleware from './middleware/requestId';
 import errorHandler from './middleware/errorHandler';
+import RateLimiter from './middleware/ratelimit';
 
 const app: Express = express();
 const port = process.env.PORT || 3000;
+
+//rate limiter middleware
+const rateLimiter = new RateLimiter({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  maxRequests: 100 // 100 requests per window
+});
+app.use(rateLimiter.middleware());
 
 // Middleware
 app.use(cors());
