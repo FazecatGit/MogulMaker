@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express';
 import apiClient from '../utils/apiClient';
+import authMiddleware from '../middleware/auth';
 
 const router = Router();
 
@@ -33,7 +34,7 @@ router.get('/:symbol', async (req: Request, res: Response) => {
 });
 
 // DELETE /api/positions/{symbol} - Close position (protected)
-router.delete('/:symbol', async (req: Request, res: Response) => {
+router.delete('/:symbol', authMiddleware ,async (req: Request, res: Response) => {
   try {
     const { symbol } = req.params;
     const token = req.headers.authorization?.split(' ')[1];

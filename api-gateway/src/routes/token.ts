@@ -4,7 +4,7 @@ import apiClient from '../utils/apiClient';
 const router = Router();
 
 // POST /api/token - Generate JWT token
-router.post('/', async (req: Request, res: Response) => {
+router.post('/', authMiddleware ,async (req: Request, res: Response) => {
   try {
     if (!req.body) {
       res.status(400).json({ error: 'Request body is required' });
