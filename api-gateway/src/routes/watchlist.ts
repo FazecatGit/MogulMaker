@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import apiClient from '../utils/apiClient';
 import authMiddleware from '../middleware/auth';
+import logger from '../utils/logger';
 
 const router = Router();
 
@@ -24,11 +25,12 @@ router.post('/',authMiddleware ,async (req: Request, res: Response) => {
       res.status(400).json({ error: 'Symbol is required' });
       return;
     }
-
+    logger.info('Adding to watchlist', { symbol, reason });
     const data = await apiClient.post('/api/watchlist', { 
       symbol, 
       reason: reason || '' 
     });
+    logger.info('Symbol added to watchlist', { symbol });
     res.json(data);
   } catch (error: any) {
     console.error('Add to watchlist error:', error.message);
@@ -45,8 +47,9 @@ router.delete('/',authMiddleware ,async (req: Request, res: Response) => {
       res.status(400).json({ error: 'Symbol is required' });
       return;
     }
-
+    logger.info('Removing from watchlist', { symbol });
     const data = await apiClient.delete('/api/watchlist', { symbol });
+    logger.info('Symbol removed from watchlist', { symbol });
     res.json(data);
   } catch (error: any) {
     console.error('Remove from watchlist error:', error.message);

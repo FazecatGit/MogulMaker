@@ -1,6 +1,8 @@
 import { Router, Request, Response } from 'express';
 import apiClient from '../utils/apiClient';
 import authMiddleware from '../middleware/auth';
+import { symbol } from 'zod';
+import logger from '../utils/logger';
 
 const router = Router();
 
@@ -34,22 +36,21 @@ router.get('/:symbol', async (req: Request, res: Response) => {
 });
 
 // DELETE /api/positions/{symbol} - Close position (protected)
-router.delete('/:symbol', authMiddleware ,async (req: Request, res: Response) => {
+router.delete('/:symbol', authMiddleware, async (req: Request, res: Response, next) => {
   try {
     const { symbol } = req.params;
-    const token = req.headers.authorization?.split(' ')[1];
 
     if (!symbol) {
       res.status(400).json({ error: 'Symbol is required' });
       return;
     }
 
+    logger.info('Closing position', { symbol });
     const data = await apiClient.delete(`/api/positions/${symbol}`);
+    logger.info('Position closed successfully', { symbol });
     res.json(data);
-  } catch (error: any) {
-    console.error('Close position error:', error.message);
-    res.status(500).json({ error: 'Failed to close position' });
+  } catch (error) {
+    next(error);
   }
 });
-
 export default router;

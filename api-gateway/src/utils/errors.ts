@@ -268,6 +268,7 @@ export {
   ServiceUnavailableError,
   ParsingError,
   DataError,
+  RateLimitError,
   formatError,
   isAPIError,
   handleError,

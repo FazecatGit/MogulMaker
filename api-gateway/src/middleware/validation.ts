@@ -1,21 +1,28 @@
 import { Request, Response, NextFunction } from 'express';
 import { ValidationError } from '../utils/errors';
+import { z } from 'zod';
 
-function validateRequest(schema: any) {
+function validateRequest(schema: z.ZodSchema) {
   return (req: Request, res: Response, next: NextFunction) => {
-    const { error, value } = schema.validate(req.body);
-    
-    if (error) {
-      const validationError = new ValidationError(
-        'Invalid request data',
-        'VALIDATION_ERROR',
-        { details: error.details }
-      );
-      return next(validationError);
+    try {
+      const validated = schema.parse(req.body);
+      req.body = validated;
+      next();
+    } catch (error: any) {
+      if (error instanceof z.ZodError) {
+        const details = error.issues.map(err => ({
+          path: err.path.join('.'),
+          message: err.message,
+        }));
+        const validationError = new ValidationError(
+          'Invalid request data',
+          'VALIDATION_ERROR',
+          { details }
+        );
+        return next(validationError);
+      }
+      next(error);
     }
-    
-    req.body = value;
-    next();
   };
 }
 
