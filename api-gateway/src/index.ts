@@ -10,6 +10,8 @@ import tradesRoutes from './routes/trades';
 import analyticsRoutes from './routes/analytics';
 import analysisRoutes from './routes/analysis';
 import tokenRoutes from './routes/token';
+import requestIdMiddleware from './middleware/requestId';
+import errorHandler from './middleware/errorHandler';
 
 const app: Express = express();
 const port = process.env.PORT || 3000;
@@ -18,10 +20,14 @@ const port = process.env.PORT || 3000;
 app.use(cors());
 app.use(express.json());
 
+// Middleware to assign request IDs
+app.use(requestIdMiddleware);
+
 // Health check endpoint
 app.get('/health', (req: Request, res: Response) => {
   res.json({ status: 'API Gateway is running', timestamp: new Date() });
 });
+
 
 // Routes
 app.use('/api/watchlist', watchlistRoutes);
@@ -39,10 +45,7 @@ app.use('/api/analysis', analysisRoutes);
 app.use('/api/token', tokenRoutes);
 
 // Error handling middleware
-app.use((err: any, req: Request, res: Response, next: any) => {
-  console.error('Error:', err);
-  res.status(500).json({ error: 'Internal server error', message: err.message });
-});
+app.use(errorHandler);
 
 // Start server
 app.listen(port, () => {
