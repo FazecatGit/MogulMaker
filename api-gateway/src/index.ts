@@ -5,6 +5,7 @@ import backtestRoutes from './routes/backtest';
 import scoutRoutes from './routes/scout';
 import positionsRoutes from './routes/positions';
 import riskRoutes from './routes/risk';
+import riskAdjustmentsRoutes from './routes/riskAdjustments';
 import statsRoutes from './routes/stats';
 import tradesRoutes from './routes/trades';
 import analyticsRoutes from './routes/analytics';
@@ -46,9 +47,7 @@ app.use('/api/risk', riskRoutes);
 app.use('/api/stats', statsRoutes);
 app.use('/api/trades', tradesRoutes);
 app.use('/api/portfolio-summary', analyticsRoutes);
-app.use('/api/risk-adjustments', analyticsRoutes);
-app.use('/api/performance-metrics', analyticsRoutes);
-app.use('/api/risk-alerts', analyticsRoutes);
+app.use('/api/risk-adjustments', riskAdjustmentsRoutes);
 app.use('/api/analysis', analysisRoutes);
 app.use('/api/token', tokenRoutes);
 

@@ -1,4 +1,4 @@
-import { Router, Request, Response } from 'express';
+import { Router, Request, Response, NextFunction } from 'express';
 import apiClient from '../utils/apiClient';
 import authMiddleware from '../middleware/auth';
 import { symbol } from 'zod';
@@ -7,18 +7,17 @@ import logger from '../utils/logger';
 const router = Router();
 
 // GET /api/positions - Get all positions
-router.get('/', async (req: Request, res: Response) => {
+router.get('/', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const data = await apiClient.get('/api/positions');
     res.json(data);
-  } catch (error: any) {
-    console.error('Get positions error:', error.message);
-    res.status(500).json({ error: 'Failed to fetch positions' });
+  } catch (error) {
+    next(error);
   }
 });
 
 // GET /api/positions/{symbol} - Get position by symbol
-router.get('/:symbol', async (req: Request, res: Response) => {
+router.get('/:symbol', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { symbol } = req.params;
     
@@ -29,9 +28,8 @@ router.get('/:symbol', async (req: Request, res: Response) => {
 
     const data = await apiClient.get(`/api/positions/${symbol}`);
     res.json(data);
-  } catch (error: any) {
-    console.error('Get position error:', error.message);
-    res.status(500).json({ error: 'Failed to fetch position' });
+  } catch (error) {
+    next(error);
   }
 });
 

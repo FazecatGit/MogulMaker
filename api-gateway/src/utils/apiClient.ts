@@ -1,5 +1,32 @@
 import axios, { AxiosInstance, AxiosError } from 'axios';
-import { ERROR_CODES, HTTP_STATUS_CODES } from '@shared/errorCodes';
+
+// Error codes (duplicated from shared to avoid module resolution issues)
+const ERROR_CODES = {
+  UNAUTHORIZED: 'UNAUTHORIZED',
+  NOT_FOUND: 'NOT_FOUND',
+  VALIDATION_ERROR: 'VALIDATION_ERROR',
+  BAD_REQUEST: 'BAD_REQUEST',
+  FORBIDDEN: 'FORBIDDEN',
+  CONFLICT: 'CONFLICT',
+  INTERNAL_ERROR: 'INTERNAL_ERROR',
+  TIMEOUT: 'TIMEOUT',
+  SERVICE_UNAVAILABLE: 'SERVICE_UNAVAILABLE',
+  GATEWAY_ERROR: 'GATEWAY_ERROR',
+} as const;
+
+const HTTP_STATUS_CODES = {
+  OK: 200,
+  CREATED: 201,
+  BAD_REQUEST: 400,
+  UNAUTHORIZED: 401,
+  FORBIDDEN: 403,
+  NOT_FOUND: 404,
+  CONFLICT: 409,
+  INTERNAL_ERROR: 500,
+  SERVICE_UNAVAILABLE: 503,
+  TIMEOUT: 504,
+  GATEWAY_ERROR: 502,
+} as const;
 
 // Response cache with TTL (time-to-live)
 interface CacheEntry {

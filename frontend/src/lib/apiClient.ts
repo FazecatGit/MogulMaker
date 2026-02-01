@@ -1,5 +1,4 @@
 import axios from 'axios';
-import { parseAPIError } from '../../../shared/errorCodes';
 
 const apiClient = axios.create({
   baseURL: process.env.NEXT_PUBLIC_API_GATEWAY_URL || 'http://localhost:3000/api',
@@ -19,18 +18,25 @@ apiClient.interceptors.request.use((config) => {
 apiClient.interceptors.response.use(
   (response) => response.data,
   (error) => {
-    const parsedError = parseAPIError(error);
-    
+    const status = error.response?.status || 500;
+    const message = error.response?.data?.error || 'An error occurred';
+
     // Handle 401 - clear token and redirect to login
-    if (parsedError.status === 401) {
+    if (status === 401) {
       localStorage.removeItem('authToken');
       window.location.href = '/login';
     }
-    
-    // Throw parsed error with structured format
-    const errorToThrow = new Error(parsedError.message);
-    Object.assign(errorToThrow, parsedError);
-    throw errorToThrow;
+
+    // Create a structured error object
+    const apiError = new Error(message);
+    Object.assign(apiError, {
+      status,
+      code: error.response?.data?.code || 'UNKNOWN_ERROR',
+      details: error.response?.data?.details,
+      requestId: error.response?.data?.requestId,
+    });
+
+    throw apiError;
   }
 );
 

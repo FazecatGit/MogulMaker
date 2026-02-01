@@ -1,7 +1,7 @@
 .env
 to do list.txt
 plans
-node_modules/
+node_modules
 dist/
 .env.local
 .env.*.local
