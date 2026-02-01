@@ -12,6 +12,7 @@ router.post('/', authMiddleware ,async (req: Request, res: Response) => {
       res.status(400).json({ error: 'Request body is required' });
       return;
     }
+    
     logger.info('Generating token with payload:', req.body);
     const data = await apiClient.post('/api/token', req.body);
     logger.info('Token generated successfully');

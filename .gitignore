@@ -1,3 +1,11 @@
 .env
 to do list.txt
 plans
+node_modules/
+dist/
+.env.local
+.env.*.local
+*.log
+.DS_Store
+.vscode/
+.idea/

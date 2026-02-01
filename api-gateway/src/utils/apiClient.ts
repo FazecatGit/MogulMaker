@@ -1,4 +1,5 @@
 import axios, { AxiosInstance, AxiosError } from 'axios';
+import { ERROR_CODES, HTTP_STATUS_CODES } from '@shared/errorCodes';
 
 // Response cache with TTL (time-to-live)
 interface CacheEntry {
@@ -85,7 +86,6 @@ class APIClient {
     }
   }
 
-
   async delete<T>(url: string, data?: any): Promise<T> {
     try {
       const response = await this.client.delete<T>(url, { data });
@@ -108,14 +108,21 @@ class APIClient {
   }
 
   private handleError(error: AxiosError, method: string, url: string) {
+    const statusCode = error.response?.status || HTTP_STATUS_CODES.INTERNAL_ERROR;
+    const statusText = error.response?.statusText || ERROR_CODES.INTERNAL_ERROR;
+
     if (error.response) {
       console.error(
-        `[ERROR] ${method} ${url}: Status ${error.response.status} - ${error.response.statusText}`
+        `[${ERROR_CODES.INTERNAL_ERROR}] ${method} ${url}: Status ${statusCode} - ${statusText}`
       );
     } else if (error.request) {
-      console.error(`[ERROR] ${method} ${url}: No response from server`);
+      console.error(
+        `[${ERROR_CODES.GATEWAY_ERROR}] ${method} ${url}: No response from server`
+      );
     } else {
-      console.error(`[ERROR] ${method} ${url}: ${error.message}`);
+      console.error(
+        `[${ERROR_CODES.INTERNAL_ERROR}] ${method} ${url}: ${error.message}`
+      );
     }
   }
 }
