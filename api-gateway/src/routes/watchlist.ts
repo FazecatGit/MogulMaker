@@ -1,6 +1,5 @@
 import { Router, Request, Response } from 'express';
 import apiClient from '../utils/apiClient';
-import authMiddleware from '../middleware/auth';
 import logger from '../utils/logger';
 
 const router = Router();
@@ -8,16 +7,26 @@ const router = Router();
 // GET /api/watchlist - Proxy to Go API
 router.get('/', async (req: Request, res: Response) => {
   try {
-    const data = await apiClient.get('/api/watchlist');
+    logger.info('Fetching watchlist from Go API');
+    const data = await apiClient.get<any>('/api/watchlist');
+    logger.info('Watchlist fetched successfully', { count: (data as any)?.watchlist?.length || 0 });
     res.json(data);
   } catch (error: any) {
-    console.error('Watchlist fetch error:', error.message);
-    res.status(500).json({ error: 'Failed to fetch watchlist' });
+    logger.error('Watchlist fetch error', {
+      message: error.message,
+      status: error.response?.status,
+      data: error.response?.data,
+      stack: error.stack,
+    });
+    res.status(error.response?.status || 500).json({
+      error: 'Failed to fetch watchlist',
+      details: error.response?.data || error.message,
+    });
   }
 });
 
 // POST /api/watchlist - Add symbol to watchlist
-router.post('/',authMiddleware ,async (req: Request, res: Response) => {
+router.post('/', async (req: Request, res: Response) => {
   try {
     const { symbol, reason } = req.body;
 
@@ -39,7 +48,7 @@ router.post('/',authMiddleware ,async (req: Request, res: Response) => {
 });
 
 // DELETE /api/watchlist - Remove symbol from watchlist
-router.delete('/',authMiddleware ,async (req: Request, res: Response) => {
+router.delete('/', async (req: Request, res: Response) => {
   try {
     const { symbol } = req.body;
 

@@ -16,6 +16,7 @@ import (
 	database "github.com/fazecat/mogulmaker/Internal/database/sqlc"
 	"github.com/fazecat/mogulmaker/Internal/handlers/monitoring"
 	"github.com/fazecat/mogulmaker/Internal/handlers/risk"
+	"github.com/fazecat/mogulmaker/Internal/strategy/indicators"
 	"github.com/fazecat/mogulmaker/Internal/strategy/metrics"
 	"github.com/fazecat/mogulmaker/Internal/strategy/position"
 	"github.com/fazecat/mogulmaker/Internal/utils/scanner"
@@ -68,7 +69,7 @@ func (api *API) HandleGetRiskStatus(w http.ResponseWriter, r *http.Request) {
 }
 
 func (api *API) HandleGetStats(w http.ResponseWriter, r *http.Request) {
-	dbTrades, err := api.Queries.GetAllTrades(context.Background())
+	dbTrades, err := api.Queries.GetAllTrades(r.Context())
 	if err != nil {
 		log.Printf("Error fetching trades: %v", err)
 		WriteError(w, http.StatusInternalServerError, "Failed to fetch trades")
@@ -177,7 +178,7 @@ func (api *API) HandleGetTrades(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	allTrades, err := api.Queries.GetAllTrades(context.Background())
+	allTrades, err := api.Queries.GetAllTrades(r.Context())
 	if err != nil {
 		log.Printf("Error fetching trades: %v", err)
 		WriteError(w, http.StatusInternalServerError, "Failed to fetch trades")
@@ -755,29 +756,33 @@ func (api *API) HandleAnalysisReport(w http.ResponseWriter, r *http.Request) {
 }
 
 func (api *API) HandleGetWatchlist(w http.ResponseWriter, r *http.Request) {
-	watchlist, err := api.Queries.GetWatchlist(context.Background())
+	watchlist, err := api.Queries.GetWatchlist(r.Context())
 	if err != nil {
 		log.Printf("Error fetching watchlist: %v", err)
 		WriteError(w, http.StatusInternalServerError, "Failed to fetch watchlist")
 		return
 	}
 
+	if watchlist == nil {
+		watchlist = []database.GetWatchlistRow{}
+	}
+
 	// Extract just the symbols and scores
-	var symbols []map[string]interface{}
-	for _, item := range watchlist {
-		symbols = append(symbols, map[string]interface{}{
+	symbols := make([]map[string]interface{}, len(watchlist))
+	for i, item := range watchlist {
+		symbols[i] = map[string]interface{}{
 			"symbol":  item.Symbol,
 			"score":   item.Score,
 			"type":    item.AssetType,
 			"reason":  item.Reason,
 			"added":   item.AddedDate,
 			"updated": item.LastUpdated,
-		})
+		}
 	}
 
 	response := map[string]interface{}{
 		"watchlist": symbols,
-		"count":     len(watchlist),
+		"count":     len(symbols),
 	}
 
 	WriteJSON(w, http.StatusOK, response)
@@ -811,7 +816,7 @@ func (api *API) HandleAddToWatchlist(w http.ResponseWriter, r *http.Request) {
 		},
 	}
 
-	watchlistID, err := api.Queries.AddToWatchlist(context.Background(), params)
+	watchlistID, err := api.Queries.AddToWatchlist(r.Context(), params)
 	if err != nil {
 		log.Printf("Error adding to watchlist: %v", err)
 		WriteError(w, http.StatusInternalServerError, "Failed to add to watchlist")
@@ -844,7 +849,7 @@ func (api *API) HandleRemoveFromWatchlist(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	err := api.Queries.RemoveFromWatchlist(context.Background(), req.Symbol)
+	err := api.Queries.RemoveFromWatchlist(r.Context(), req.Symbol)
 	if err != nil {
 		log.Printf("Error removing from watchlist: %v", err)
 		WriteError(w, http.StatusInternalServerError, "Failed to remove from watchlist")
@@ -855,6 +860,81 @@ func (api *API) HandleRemoveFromWatchlist(w http.ResponseWriter, r *http.Request
 		"success": true,
 		"symbol":  req.Symbol,
 		"message": "Symbol removed from watchlist",
+	}
+
+	WriteJSON(w, http.StatusOK, response)
+}
+
+func (api *API) HandleAnalyzeSymbol(w http.ResponseWriter, r *http.Request) {
+	symbol := r.URL.Query().Get("symbol")
+	if symbol == "" {
+		WriteError(w, http.StatusBadRequest, "Symbol parameter is required")
+		return
+	}
+
+	bars, err := datafeed.GetAlpacaBars(symbol, "1Day", 50, "")
+	if err != nil {
+		log.Printf("Error fetching bars for %s: %v", symbol, err)
+		WriteError(w, http.StatusInternalServerError, "Failed to fetch market data")
+		return
+	}
+
+	if len(bars) < 14 {
+		WriteError(w, http.StatusBadRequest, "Not enough data to analyze")
+		return
+	}
+
+	closes := make([]float64, len(bars))
+	atrBars := make([]indicators.ATRBar, len(bars))
+	for i, bar := range bars {
+		closes[i] = bar.Close
+		atrBars[i] = indicators.ATRBar{
+			High:  bar.High,
+			Low:   bar.Low,
+			Close: bar.Close,
+		}
+	}
+
+	rsiValues, err := indicators.CalculateRSI(closes, 14)
+	if err != nil || len(rsiValues) == 0 {
+		WriteError(w, http.StatusInternalServerError, "Failed to calculate RSI")
+		return
+	}
+
+	atrValues, err := indicators.CalculateATR(atrBars, 14)
+	if err != nil || len(atrValues) == 0 {
+		WriteError(w, http.StatusInternalServerError, "Failed to calculate ATR")
+		return
+	}
+
+	currentPrice := bars[len(bars)-1].Close
+	currentRSI := rsiValues[len(rsiValues)-1]
+	currentATR := atrValues[len(atrValues)-1]
+
+	sma20 := 0.0
+	for i := len(bars) - 20; i < len(bars); i++ {
+		if i >= 0 {
+			sma20 += bars[i].Close
+		}
+	}
+	sma20 /= 20.0
+
+	trend := "neutral"
+	if currentPrice > sma20*1.02 {
+		trend = "bullish"
+	} else if currentPrice < sma20*0.98 {
+		trend = "bearish"
+	}
+
+	response := map[string]interface{}{
+		"symbol":        symbol,
+		"current_price": currentPrice,
+		"rsi":           currentRSI,
+		"atr":           currentATR,
+		"sma_20":        sma20,
+		"trend":         trend,
+		"bars_analyzed": len(bars),
+		"timestamp":     time.Now().Unix(),
 	}
 
 	WriteJSON(w, http.StatusOK, response)

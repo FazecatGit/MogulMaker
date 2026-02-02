@@ -12,7 +12,6 @@ import (
 var Queries *database.Queries
 var DB *sql.DB
 
-// DatabaseConfig holds database connection configuration
 type DatabaseConfig struct {
 	Host     string
 	Port     string
@@ -22,7 +21,6 @@ type DatabaseConfig struct {
 	SSLMode  string
 }
 
-// InitDatabase initializes the database connection
 func InitDatabase() error {
 	config := DatabaseConfig{
 		Host:     getEnvOrDefault("DB_HOST", "localhost"),
@@ -33,7 +31,6 @@ func InitDatabase() error {
 		SSLMode:  getEnvOrDefault("DB_SSLMODE", "disable"),
 	}
 
-	// Build connection string
 	connStr := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=%s",
 		config.Host, config.Port, config.User, config.Password, config.DBName, config.SSLMode)
 
@@ -48,8 +45,55 @@ func InitDatabase() error {
 	}
 	Queries = database.New(DB)
 
-	fmt.Println("✅ Database connected successfully!")
+	// Initialize database schema if tables don't exist
+	if err := initializeSchema(); err != nil {
+		fmt.Printf("Warning: Failed to initialize schema: %v\n", err)
+		// Don't fail - tables might already exist
+	}
+
+	fmt.Println("Database connected successfully!")
 	return nil
+}
+
+// initializeSchema creates watchlist tables if they don't exist
+func initializeSchema() error {
+	schemaSQL := `
+	CREATE TABLE IF NOT EXISTS watchlist (
+		id SERIAL PRIMARY KEY,
+		symbol TEXT NOT NULL UNIQUE,
+		asset_type TEXT NOT NULL,
+		score REAL NOT NULL,
+		reason TEXT,
+		added_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+		last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+		status TEXT DEFAULT 'active'
+	);
+
+	CREATE TABLE IF NOT EXISTS watchlist_history (
+		id SERIAL PRIMARY KEY,
+		watchlist_id INTEGER NOT NULL,
+		old_score REAL,
+		new_score REAL NOT NULL,
+		analysis_data TEXT,
+		timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+		FOREIGN KEY(watchlist_id) REFERENCES watchlist(id)
+	);
+
+	CREATE TABLE IF NOT EXISTS skip_backlog (
+		id SERIAL PRIMARY KEY,
+		symbol TEXT NOT NULL UNIQUE,
+		asset_type TEXT NOT NULL,
+		reason TEXT,
+		timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+		recheck_after TIMESTAMP NOT NULL
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_watchlist_symbol ON watchlist(symbol);
+	CREATE INDEX IF NOT EXISTS idx_watchlist_status ON watchlist(status);
+	`
+
+	_, err := DB.Exec(schemaSQL)
+	return err
 }
 
 func CloseDatabase() error {

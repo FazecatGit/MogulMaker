@@ -138,6 +138,7 @@ func main() {
 	r.Get("/api/watchlist", apiServer.HandleGetWatchlist)
 	r.Post("/api/watchlist", apiServer.HandleAddToWatchlist)
 	r.Delete("/api/watchlist", apiServer.HandleRemoveFromWatchlist)
+	r.Get("/api/watchlist/analyze", apiServer.HandleAnalyzeSymbol)
 	r.Get("/api/scout", apiServer.HandleScoutStocks)
 
 	// Trade Execution

@@ -35,6 +35,7 @@ const navItems: NavItem[] = [
   { label: 'Positions', href: '/positions', icon: <TrendingUp className="w-5 h-5" /> },
   { label: 'Trades', href: '/trades', icon: <Wallet className="w-5 h-5" /> },
   { label: `Scouter`, href: '/scouter', icon: <TrendingUp className="w-5 h-5" /> },
+  { label : `News`, href: '/news', icon: <TrendingUp className="w-5 h-5" />},
   { label: 'Backtest', href: '/backtest', icon: <BarChart3 className="w-5 h-5" /> },
   { label: 'Watchlist', href: '/watchlist', icon: <Clock className="w-5 h-5" /> },
   { label: 'Risk', href: '/risk', icon: <AlertCircle className="w-5 h-5" /> },

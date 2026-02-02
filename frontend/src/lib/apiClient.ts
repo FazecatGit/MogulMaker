@@ -29,10 +29,9 @@ apiClient.interceptors.response.use(
     const status = error.response?.status || error.code || 500;
     const message = error.response?.data?.error || error.message || 'An error occurred';
 
-    // Handle 401 - clear token and redirect to login
+    // Handle 401 - clear token (but don't redirect, no login page exists)
     if (status === 401 && typeof window !== 'undefined') {
       localStorage.removeItem('authToken');
-      window.location.href = '/login';
     }
 
     // Log error in development

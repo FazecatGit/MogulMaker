@@ -143,6 +143,39 @@ CREATE TABLE daily_risk_summary (
     UNIQUE(summary_date)
 );
 
+-- Watchlist table for tracking candidate symbols (Phase 4.3)
+CREATE TABLE watchlist (
+    id SERIAL PRIMARY KEY,
+    symbol TEXT NOT NULL UNIQUE,
+    asset_type TEXT NOT NULL,
+    score REAL NOT NULL,
+    reason TEXT,
+    added_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    status TEXT DEFAULT 'active'  -- 'active' or 'archived'
+);
+
+-- Watchlist history table to track score changes over time
+CREATE TABLE watchlist_history (
+    id SERIAL PRIMARY KEY,
+    watchlist_id INTEGER NOT NULL,
+    old_score REAL,
+    new_score REAL NOT NULL,
+    analysis_data TEXT, -- JSON
+    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(watchlist_id) REFERENCES watchlist(id)
+);
+
+-- Skip backlog table for rejected candidates
+CREATE TABLE skip_backlog (
+    id SERIAL PRIMARY KEY,
+    symbol TEXT NOT NULL UNIQUE,
+    asset_type TEXT NOT NULL,
+    reason TEXT,
+    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    recheck_after TIMESTAMP NOT NULL  -- when can we reconsider (default: 7 days from now)
+);
+
 -- Indexes for better query performance
 CREATE INDEX idx_historical_bars_symbol_timeframe ON historical_bars(symbol, timeframe);
 CREATE INDEX idx_historical_bars_timestamp ON historical_bars(timestamp);
@@ -155,3 +188,8 @@ CREATE INDEX idx_trade_records_symbol ON trade_records(symbol);
 CREATE INDEX idx_trade_records_entry_time ON trade_records(entry_time);
 CREATE INDEX idx_portfolio_stats_history_date ON portfolio_stats_history(snapshot_date);
 CREATE INDEX idx_daily_risk_summary_date ON daily_risk_summary(summary_date);
+CREATE INDEX idx_watchlist_symbol ON watchlist(symbol);
+CREATE INDEX idx_watchlist_status ON watchlist(status);
+CREATE INDEX idx_watchlist_history_watchlist_id ON watchlist_history(watchlist_id);
+CREATE INDEX idx_skip_backlog_symbol ON skip_backlog(symbol);
+CREATE INDEX idx_skip_backlog_recheck_after ON skip_backlog(recheck_after);
