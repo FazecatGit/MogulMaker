@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"sort"
 	"strconv"
 	"sync"
 	"time"
@@ -17,6 +18,7 @@ import (
 	"github.com/fazecat/mogulmaker/Internal/handlers/risk"
 	"github.com/fazecat/mogulmaker/Internal/strategy/metrics"
 	"github.com/fazecat/mogulmaker/Internal/strategy/position"
+	"github.com/fazecat/mogulmaker/Internal/utils/scanner"
 	"github.com/shopspring/decimal"
 )
 
@@ -182,22 +184,72 @@ func (api *API) HandleGetTrades(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var filteredTrades []database.GetAllTradesRow
-	if symbol != "" {
-		for _, trade := range allTrades {
-			if trade.Symbol == symbol {
-				filteredTrades = append(filteredTrades, trade)
-			}
+	// Convert to trade results with calculated P&L
+	tradeResults := convertToTradeResults(allTrades)
+
+	// Filter by symbol if provided
+	var filteredResults []map[string]interface{}
+	for _, trade := range tradeResults {
+		if symbol == "" || trade.Symbol == symbol {
+			filteredResults = append(filteredResults, map[string]interface{}{
+				"id":            trade.Symbol + "_" + trade.EntryTime.Format("2006-01-02T15:04:05"),
+				"symbol":        trade.Symbol,
+				"exchange":      "NASDAQ", // Default exchange - could be enhanced
+				"entry_time":    trade.EntryTime.Format(time.RFC3339),
+				"exit_time":     trade.ExitTime.Format(time.RFC3339),
+				"entry_price":   trade.EntryPrice,
+				"exit_price":    trade.ExitPrice,
+				"qty":           trade.Quantity,
+				"side":          "buy",
+				"status":        "closed",
+				"realized_pl":   trade.PnL,
+				"realized_plpc": trade.ReturnPercent / 100,
+				"duration_ms":   trade.Duration.Milliseconds(),
+			})
 		}
-	} else {
-		filteredTrades = allTrades
 	}
 
-	if len(filteredTrades) > limit {
-		filteredTrades = filteredTrades[:limit]
+	// Also include open positions (unfilled sells)
+	openPositions, err := api.AlpacaClient.GetPositions()
+	if err == nil {
+		for _, pos := range openPositions {
+			var entryPrice float64 = 0
+			qty, _ := pos.Qty.Float64()
+			costBasis, _ := pos.CostBasis.Float64()
+			if qty > 0 {
+				entryPrice = costBasis / qty
+			}
+
+			filteredResults = append(filteredResults, map[string]interface{}{
+				"id":            pos.Symbol + "_open",
+				"symbol":        pos.Symbol,
+				"exchange":      "NASDAQ",
+				"entry_time":    time.Now().Add(-time.Hour).Format(time.RFC3339), // Approximate
+				"exit_time":     nil,
+				"entry_price":   entryPrice,
+				"exit_price":    nil,
+				"qty":           qty,
+				"side":          "buy",
+				"status":        "open",
+				"realized_pl":   0,
+				"realized_plpc": 0,
+				"duration_ms":   nil,
+			})
+		}
 	}
 
-	WriteJSON(w, http.StatusOK, filteredTrades)
+	if len(filteredResults) > limit {
+		filteredResults = filteredResults[:limit]
+	}
+
+	response := map[string]interface{}{
+		"count":       len(filteredResults),
+		"trades":      filteredResults,
+		"timestamp":   time.Now().Unix(),
+		"risk_status": map[string]interface{}{"enabled": true},
+	}
+
+	WriteJSON(w, http.StatusOK, response)
 }
 
 func (api *API) HandleSellAllTrades(w http.ResponseWriter, r *http.Request) {
@@ -326,7 +378,12 @@ func (api *API) HandleClosePosition(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	qty, _ := position.Qty.Float64()
+	qty, ok := position.Qty.Float64()
+	if !ok {
+		log.Printf("Error converting quantity to float64")
+		WriteError(w, http.StatusInternalServerError, "Failed to process position quantity")
+		return
+	}
 
 	qtyDecimal := decimal.NewFromFloat(qty)
 	order := alpaca.PlaceOrderRequest{
@@ -787,7 +844,6 @@ func (api *API) HandleRemoveFromWatchlist(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	// Remove from watchlist in database
 	err := api.Queries.RemoveFromWatchlist(context.Background(), req.Symbol)
 	if err != nil {
 		log.Printf("Error removing from watchlist: %v", err)
@@ -805,33 +861,66 @@ func (api *API) HandleRemoveFromWatchlist(w http.ResponseWriter, r *http.Request
 }
 
 func (api *API) HandleScoutStocks(w http.ResponseWriter, r *http.Request) {
-	// Scout/scanner endpoint - find opportunities
+
 	limitStr := r.URL.Query().Get("limit")
-	limit := 50
+	limit := 100
 	if limitStr != "" {
 		if parsedLimit, err := strconv.Atoi(limitStr); err == nil && parsedLimit > 0 {
 			limit = parsedLimit
 		}
 	}
 
-	// Fetch scan logs from database
-	scanLogs, err := api.Queries.GetAllScanLogs(context.Background())
+	minScoreStr := r.URL.Query().Get("min_score")
+	minScore := 50.0
+	if minScoreStr != "" {
+		if parsedScore, err := strconv.ParseFloat(minScoreStr, 64); err == nil {
+			minScore = parsedScore
+		}
+	}
+
+	log.Printf("Scanning %d stocks with min score %.1f (limit=%s, minScore=%s)", limit, minScore, limitStr, minScoreStr)
+	ctx := context.Background()
+
+	candidates, totalScanned, err := scanner.PerformProfileScan(ctx, "api_scout", minScore, 0, limit, nil)
 	if err != nil {
-		log.Printf("Error fetching scan logs: %v", err)
-		WriteError(w, http.StatusInternalServerError, "Failed to fetch scan logs")
+		errMsg := err.Error()
+		log.Printf("SCANNER ERROR: %v", errMsg)
+		WriteError(w, http.StatusInternalServerError, errMsg)
 		return
 	}
 
-	// Limit results
-	if len(scanLogs) > limit {
-		scanLogs = scanLogs[:limit]
+	log.Printf("SCAN COMPLETE: Got %d results from %d total symbols, limit was %d", len(candidates), totalScanned, limit)
+
+	sort.SliceStable(candidates, func(i, j int) bool {
+		return candidates[i].Score > candidates[j].Score
+	})
+
+	var opportunities []map[string]interface{}
+	for i, candidate := range candidates {
+		if i >= limit {
+			break
+		}
+
+		opp := map[string]interface{}{
+			"symbol":    candidate.Symbol,
+			"score":     candidate.Score,
+			"analysis":  candidate.Analysis,
+			"rsi":       candidate.RSI,
+			"atr":       candidate.ATR,
+			"timestamp": time.Now().Unix(),
+			"rank":      i + 1,
+		}
+		opportunities = append(opportunities, opp)
 	}
 
 	response := map[string]interface{}{
-		"scanned_count": len(scanLogs),
-		"limit":         limit,
-		"opportunities": scanLogs,
-		"message":       "Scanner results from database",
+		"scanned_count":  len(opportunities),
+		"total_symbols":  totalScanned,
+		"min_score":      minScore,
+		"limit":          limit,
+		"opportunities":  opportunities,
+		"scan_timestamp": time.Now().Unix(),
+		"message":        "Real-time stock screening results",
 	}
 
 	WriteJSON(w, http.StatusOK, response)

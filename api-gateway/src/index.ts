@@ -11,6 +11,7 @@ import tradesRoutes from './routes/trades';
 import analyticsRoutes from './routes/analytics';
 import analysisRoutes from './routes/analysis';
 import tokenRoutes from './routes/token';
+import executeTradeRoutes from './routes/execute-trade';
 import requestIdMiddleware from './middleware/requestId';
 import errorHandler from './middleware/errorHandler';
 import RateLimiter from './middleware/ratelimit';
@@ -50,6 +51,7 @@ app.use('/api/portfolio-summary', analyticsRoutes);
 app.use('/api/risk-adjustments', riskAdjustmentsRoutes);
 app.use('/api/analysis', analysisRoutes);
 app.use('/api/token', tokenRoutes);
+app.use('/api', executeTradeRoutes);
 
 // Error handling middleware
 app.use(errorHandler);

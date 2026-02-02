@@ -106,9 +106,11 @@ func PerformProfileScan(ctx context.Context, profileName string, minScore float6
 
 	candidates := []types.Candidate{}
 	criteria := DefaultScreenerCriteria()
+	scannedCount := 0
 
-	for i := offset; i < end; i++ {
+	for i := offset; i < end && scannedCount < batchSize; i++ {
 		symbol := symbols[i]
+		scannedCount++
 
 		// Use the advanced screener logic instead of simple scoring
 		stockScores, err := ScreenStocksWithType([]string{symbol}, "1Day", 100, criteria, nil, "stock")

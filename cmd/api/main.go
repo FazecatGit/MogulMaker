@@ -20,11 +20,9 @@ import (
 
 // duped from main.go will change later to use less code
 func main() {
-	err := godotenv.Load("../../.env")
-	if err != nil {
-		log.Fatal("Error loading .env file")
-	}
-	err = datafeed.InitDatabase()
+	_ = godotenv.Load(".env")
+	_ = godotenv.Load("../../.env")
+	err := datafeed.InitDatabase()
 	if err != nil {
 		log.Fatalf("Failed to connect to database: %v", err)
 	}
@@ -141,6 +139,9 @@ func main() {
 	r.Post("/api/watchlist", apiServer.HandleAddToWatchlist)
 	r.Delete("/api/watchlist", apiServer.HandleRemoveFromWatchlist)
 	r.Get("/api/scout", apiServer.HandleScoutStocks)
+
+	// Trade Execution
+	r.Post("/api/execute-trade", apiServer.HandleExecuteTrade)
 
 	// Protected routes
 	r.With(internal.JWTAuthMiddleware(apiServer.JWTManager)).Post("/api/trades", apiServer.HandleExecuteTrade)
