@@ -116,7 +116,12 @@ class APIClient {
   async delete<T>(url: string, data?: any): Promise<T> {
     try {
       const response = await this.client.delete<T>(url, { data });
+      // Invalidate both the specific URL and the base path
       this.invalidateCache(url);
+      const baseUrl = url.split('?')[0]; // Remove query params
+      if (baseUrl !== url) {
+        this.invalidateCache(baseUrl);
+      }
       return response.data;
     } catch (error) {
       this.handleError(error as AxiosError, 'DELETE', url);

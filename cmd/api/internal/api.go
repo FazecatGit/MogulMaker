@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	"sort"
@@ -16,6 +17,7 @@ import (
 	database "github.com/fazecat/mogulmaker/Internal/database/sqlc"
 	"github.com/fazecat/mogulmaker/Internal/handlers/monitoring"
 	"github.com/fazecat/mogulmaker/Internal/handlers/risk"
+	"github.com/fazecat/mogulmaker/Internal/strategy/detection"
 	"github.com/fazecat/mogulmaker/Internal/strategy/indicators"
 	"github.com/fazecat/mogulmaker/Internal/strategy/metrics"
 	"github.com/fazecat/mogulmaker/Internal/strategy/position"
@@ -763,6 +765,8 @@ func (api *API) HandleGetWatchlist(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	log.Printf("GetWatchlist returned %d items", len(watchlist))
+
 	if watchlist == nil {
 		watchlist = []database.GetWatchlistRow{}
 	}
@@ -770,6 +774,7 @@ func (api *API) HandleGetWatchlist(w http.ResponseWriter, r *http.Request) {
 	// Extract just the symbols and scores
 	symbols := make([]map[string]interface{}, len(watchlist))
 	for i, item := range watchlist {
+		log.Printf("Watchlist item %d: Symbol=%s, Score=%v", i, item.Symbol, item.Score)
 		symbols[i] = map[string]interface{}{
 			"symbol":  item.Symbol,
 			"score":   item.Score,
@@ -785,13 +790,15 @@ func (api *API) HandleGetWatchlist(w http.ResponseWriter, r *http.Request) {
 		"count":     len(symbols),
 	}
 
+	log.Printf("Sending response: %d symbols", len(symbols))
+
 	WriteJSON(w, http.StatusOK, response)
 }
 
 func (api *API) HandleAddToWatchlist(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Symbol string  `json:"symbol"`
-		Score  float32 `json:"score"`
+		Score  float64 `json:"score"`
 		Reason string  `json:"reason"`
 	}
 
@@ -805,11 +812,23 @@ func (api *API) HandleAddToWatchlist(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Validate that the stock exists by fetching asset info from Alpaca
+	asset, err := api.AlpacaClient.GetAsset(req.Symbol)
+	if err != nil {
+		log.Printf("Warning: Stock validation failed for %s: %v", req.Symbol, err)
+		// Continue anyway - validation is optional, log the error for debugging
+	}
+	if asset == nil && err != nil {
+		log.Printf("Stock symbol '%s' not found or invalid", req.Symbol)
+		WriteError(w, http.StatusBadRequest, fmt.Sprintf("Stock symbol '%s' not found. Please verify the symbol is valid.", req.Symbol))
+		return
+	}
+
 	// Add to watchlist in database
 	params := database.AddToWatchlistParams{
 		Symbol:    req.Symbol,
 		AssetType: "stock",
-		Score:     req.Score,
+		Score:     float32(req.Score),
 		Reason: sql.NullString{
 			String: req.Reason,
 			Valid:  req.Reason != "",
@@ -819,6 +838,20 @@ func (api *API) HandleAddToWatchlist(w http.ResponseWriter, r *http.Request) {
 	watchlistID, err := api.Queries.AddToWatchlist(r.Context(), params)
 	if err != nil {
 		log.Printf("Error adding to watchlist: %v", err)
+
+		// Check for duplicate key constraint error
+		if err.Error() == "pq: duplicate key value violates unique constraint \"watchlist_symbol_key\"" {
+			WriteError(w, http.StatusConflict, fmt.Sprintf("Stock symbol '%s' is already in your watchlist.", req.Symbol))
+			return
+		}
+
+		// Check for other PostgreSQL errors
+		if err.Error() == "pq: duplicate key value violates unique constraint \"watchlist_pkey\"" {
+			WriteError(w, http.StatusConflict, "This watchlist item already exists.")
+			return
+		}
+
+		// Generic error
 		WriteError(w, http.StatusInternalServerError, "Failed to add to watchlist")
 		return
 	}
@@ -835,30 +868,38 @@ func (api *API) HandleAddToWatchlist(w http.ResponseWriter, r *http.Request) {
 }
 
 func (api *API) HandleRemoveFromWatchlist(w http.ResponseWriter, r *http.Request) {
-	var req struct {
-		Symbol string `json:"symbol"`
+	// Get symbol from query parameter (primary source)
+	symbol := r.URL.Query().Get("symbol")
+
+	// Only try to parse body if symbol is not in query parameter
+	if symbol == "" {
+		var req struct {
+			Symbol string `json:"symbol"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			WriteError(w, http.StatusBadRequest, "Invalid JSON body")
+			return
+		}
+		symbol = req.Symbol
 	}
 
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		WriteError(w, http.StatusBadRequest, "Invalid JSON body")
-		return
-	}
-
-	if req.Symbol == "" {
+	if symbol == "" {
 		WriteError(w, http.StatusBadRequest, "Symbol is required")
 		return
 	}
 
-	err := api.Queries.RemoveFromWatchlist(r.Context(), req.Symbol)
+	log.Printf("DEBUG: Attempting to remove symbol '%s' from watchlist", symbol)
+	err := api.Queries.RemoveFromWatchlist(r.Context(), symbol)
 	if err != nil {
 		log.Printf("Error removing from watchlist: %v", err)
 		WriteError(w, http.StatusInternalServerError, "Failed to remove from watchlist")
 		return
 	}
+	log.Printf("DEBUG: Successfully removed symbol '%s' from watchlist", symbol)
 
 	response := map[string]interface{}{
 		"success": true,
-		"symbol":  req.Symbol,
+		"symbol":  symbol,
 		"message": "Symbol removed from watchlist",
 	}
 
@@ -872,7 +913,7 @@ func (api *API) HandleAnalyzeSymbol(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	bars, err := datafeed.GetAlpacaBars(symbol, "1Day", 50, "")
+	bars, err := datafeed.GetAlpacaBars(symbol, "1Day", 100, "")
 	if err != nil {
 		log.Printf("Error fetching bars for %s: %v", symbol, err)
 		WriteError(w, http.StatusInternalServerError, "Failed to fetch market data")
@@ -926,18 +967,146 @@ func (api *API) HandleAnalyzeSymbol(w http.ResponseWriter, r *http.Request) {
 		trend = "bearish"
 	}
 
+	support := indicators.FindSupport(bars)
+	resistance := indicators.FindResistance(bars)
+
+	distanceToSupport := ((currentPrice - support) / support) * 100
+	distanceToResistance := ((resistance - currentPrice) / currentPrice) * 100
+
+	patternDetector := detection.NewPatternDetector()
+	patterns := patternDetector.DetectAllPatterns(bars)
+
+	var bestPattern map[string]interface{}
+	var bestP *detection.PatternSignal
+	if len(patterns) > 0 {
+		// Find the best detected pattern
+		for i := range patterns {
+			if patterns[i].Detected {
+				if bestP == nil || patterns[i].Confidence > bestP.Confidence {
+					bestP = &patterns[i]
+				}
+			}
+		}
+
+		if bestP != nil {
+			bestPattern = map[string]interface{}{
+				"pattern":       bestP.Pattern,
+				"direction":     bestP.Direction,
+				"confidence":    bestP.Confidence,
+				"support_level": bestP.SupportLevel,
+				"resistance":    bestP.ResistanceLevel,
+				"target_up":     bestP.PriceTargetUp,
+				"target_down":   bestP.PriceTargetDown,
+				"stop_loss":     bestP.StopLossLevel,
+				"risk_reward":   bestP.RiskRewardRatio,
+				"reasoning":     bestP.Reasoning,
+			}
+		}
+	}
+
+	// Multi-timeframe analysis (placeholder - would require async calls)
+	var multiTimeframe map[string]interface{}
+	// Note: Full multi-timeframe analysis would require fetching 4H and 1H data separately
+	// For now, we return empty placeholder
+	multiTimeframe = map[string]interface{}{
+		"note": "Multi-timeframe analysis requires additional data fetching",
+	}
+
+	// Determine RSI signal
+	rsiSignal := "neutral"
+	if currentRSI > 70 {
+		rsiSignal = "overbought"
+	} else if currentRSI < 30 {
+		rsiSignal = "oversold"
+	}
+
+	// Calculate trading recommendation
+	tradingRec := calculateTradingRecommendation(currentPrice, currentRSI, support, resistance, trend, bestP)
+
 	response := map[string]interface{}{
-		"symbol":        symbol,
-		"current_price": currentPrice,
-		"rsi":           currentRSI,
-		"atr":           currentATR,
-		"sma_20":        sma20,
-		"trend":         trend,
-		"bars_analyzed": len(bars),
-		"timestamp":     time.Now().Unix(),
+		"symbol":                 symbol,
+		"current_price":          currentPrice,
+		"rsi":                    currentRSI,
+		"rsi_signal":             rsiSignal,
+		"atr":                    currentATR,
+		"sma_20":                 sma20,
+		"trend":                  trend,
+		"bars_analyzed":          len(bars),
+		"timestamp":              time.Now().Unix(),
+		"support_level":          support,
+		"resistance_level":       resistance,
+		"distance_to_support":    distanceToSupport,
+		"distance_to_resistance": distanceToResistance,
+		"chart_pattern":          bestPattern,
+		"multi_timeframe":        multiTimeframe,
+		"trading_recommendation": tradingRec,
 	}
 
 	WriteJSON(w, http.StatusOK, response)
+}
+
+func calculateTradingRecommendation(price, rsi, support, resistance float64, trend string, pattern *detection.PatternSignal) map[string]interface{} {
+	recommendation := "HOLD"
+	confidence := 50.0
+	reasoning := ""
+
+	// Base recommendation on RSI
+	if rsi < 30 {
+		recommendation = "BUY"
+		confidence = 65.0
+		reasoning = "RSI is oversold"
+
+		// Strengthen if near support
+		if price < support*1.01 {
+			confidence = 80.0
+			reasoning += " and price is at support level"
+		}
+	} else if rsi > 70 {
+		recommendation = "SELL"
+		confidence = 65.0
+		reasoning = "RSI is overbought"
+
+		// Strengthen if near resistance
+		if price > resistance*0.99 {
+			confidence = 80.0
+			reasoning += " and price is at resistance level"
+		}
+	} else {
+		// Check trend
+		if trend == "bullish" {
+			recommendation = "BUY"
+			confidence = 60.0
+			reasoning = "Bullish trend with RSI in neutral zone"
+		} else if trend == "bearish" {
+			recommendation = "SELL"
+			confidence = 60.0
+			reasoning = "Bearish trend with RSI in neutral zone"
+		}
+	}
+
+	// Adjust based on pattern if available
+	if pattern != nil && pattern.Detected {
+		if pattern.Direction == "LONG" && (recommendation == "BUY" || recommendation == "HOLD") {
+			confidence += (pattern.Confidence / 100.0) * 20
+			reasoning += fmt.Sprintf(" - %s pattern supports upside", pattern.Pattern)
+			recommendation = "BUY"
+		} else if pattern.Direction == "SHORT" && (recommendation == "SELL" || recommendation == "HOLD") {
+			confidence += (pattern.Confidence / 100.0) * 20
+			reasoning += fmt.Sprintf(" - %s pattern suggests downside", pattern.Pattern)
+			recommendation = "SELL"
+		}
+	}
+
+	// Cap confidence at 100
+	if confidence > 100 {
+		confidence = 100
+	}
+
+	return map[string]interface{}{
+		"action":     recommendation,
+		"confidence": confidence,
+		"reasoning":  reasoning,
+	}
 }
 
 func (api *API) HandleScoutStocks(w http.ResponseWriter, r *http.Request) {

@@ -119,10 +119,9 @@ VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 'active')
 RETURNING id;
 
 -- name: GetWatchlist :many
--- Get all active watchlist items, ordered by score
+-- Get all watchlist items, ordered by score
 SELECT id, symbol, asset_type, score, reason, added_date, last_updated
 FROM watchlist
-WHERE status = 'active'
 ORDER BY score DESC;
 
 -- name: GetWatchlistBySymbol :one
@@ -138,9 +137,8 @@ SET score = $1, last_updated = CURRENT_TIMESTAMP
 WHERE symbol = $2;
 
 -- name: RemoveFromWatchlist :exec
--- Remove symbol from watchlist by setting status to 'removed'
-UPDATE watchlist
-SET status = 'removed', last_updated = CURRENT_TIMESTAMP
+-- Remove symbol from watchlist by actually deleting the record
+DELETE FROM watchlist
 WHERE symbol = $1;
 
 -- name: AddWatchlistHistory :exec

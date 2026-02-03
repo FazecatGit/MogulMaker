@@ -27,30 +27,48 @@ apiClient.interceptors.response.use(
   },
   (error) => {
     const status = error.response?.status || error.code || 500;
-    const message = error.response?.data?.error || error.message || 'An error occurred';
+    const errorData = error.response?.data || {};
+    
+    // Extract error message with multiple fallbacks
+    let message = 'An error occurred';
+    if (typeof errorData === 'object' && errorData.error) {
+      message = errorData.error;
+    } else if (typeof errorData === 'string') {
+      message = errorData;
+    } else if (error.message) {
+      message = error.message;
+    } else if (status === 400) {
+      message = 'Invalid request';
+    } else if (status === 404) {
+      message = 'Resource not found';
+    } else if (status === 500) {
+      message = 'Server error occurred';
+    }
+
+    // Log full error info for debugging
+    if (process.env.NODE_ENV === 'development') {
+      console.error('[apiClient] Full Error Response:', {
+        url: error.config?.url,
+        status,
+        message,
+        errorData,
+        errorMessage: error.message,
+        errorResponse: error.response,
+      });
+    }
 
     // Handle 401 - clear token (but don't redirect, no login page exists)
     if (status === 401 && typeof window !== 'undefined') {
       localStorage.removeItem('authToken');
     }
 
-    // Log error in development
-    if (process.env.NODE_ENV === 'development') {
-      console.error('[apiClient] Error:', {
-        url: error.config?.url,
-        status,
-        message,
-        data: error.response?.data,
-      });
-    }
-
     // Create a structured error object
     const apiError = new Error(message);
     Object.assign(apiError, {
       status,
-      code: error.response?.data?.code || error.code || 'UNKNOWN_ERROR',
-      details: error.response?.data?.details,
-      requestId: error.response?.data?.requestId,
+      code: errorData?.code || error.code || 'UNKNOWN_ERROR',
+      details: errorData?.details,
+      requestId: errorData?.requestId,
     });
 
     throw apiError;

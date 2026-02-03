@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Star, Plus, X, RefreshCw, Trash2, Eye } from 'lucide-react';
 import apiClient from '@/lib/apiClient';
 
@@ -31,8 +31,14 @@ export default function WatchlistPage() {
   const [addSymbolModal, setAddSymbolModal] = useState(false);
   const [newSymbol, setNewSymbol] = useState('');
   const [newReason, setNewReason] = useState('');
+  const [modalError, setModalError] = useState<string | null>(null);
+  const [isAddingSymbol, setIsAddingSymbol] = useState(false);
   const [sortBy, setSortBy] = useState<'score' | 'symbol' | 'date'>('score');
   const [filterSymbol, setFilterSymbol] = useState('');
+  const [expandedSymbol, setExpandedSymbol] = useState<string | null>(null);
+  const [analysisLoading, setAnalysisLoading] = useState<string | null>(null);
+  const [analysisData, setAnalysisData] = useState<{ [key: string]: any }>({});
+  const [isScanning, setIsScanning] = useState(false);
 
   useEffect(() => {
     fetchWatchlist();
@@ -42,56 +48,42 @@ export default function WatchlistPage() {
     setIsLoading(true);
     setError(null);
     try {
-      const response = await apiClient.get('/watchlist') as WatchlistData;
+      const response = await apiClient.get('/watchlist');
       console.log('[Watchlist] API Response:', response);
-      if (response) {
-        setWatchlistData(response);
+      
+      // Handle the response - apiClient already extracts .data
+      if (response && typeof response === 'object') {
+        const data = response as any;
+        if (data.watchlist && Array.isArray(data.watchlist)) {
+          setWatchlistData({
+            watchlist: data.watchlist,
+            count: data.count || data.watchlist.length,
+            lastUpdated: new Date().toISOString(),
+          });
+        } else {
+          // Empty watchlist
+          setWatchlistData({
+            watchlist: [],
+            count: 0,
+            lastUpdated: new Date().toISOString(),
+          });
+        }
       }
     } catch (err: any) {
-      console.error('[Watchlist] Full error:', err);
+      console.error('[Watchlist] Fetch error:', {
+        message: err.message,
+        status: err.status,
+        details: err.details,
+        fullError: err,
+      });
       const errorMessage = err.message || 'Failed to fetch watchlist';
       setError(errorMessage);
-      // Fallback mock data for demonstration
+      
+      // Only set empty data on error - don't show mock data
       setWatchlistData({
-        watchlist: [
-          {
-            id: 1,
-            symbol: 'TSLA',
-            asset_type: 'stock',
-            score: 87,
-            reason: 'Strong bullish signal on daily chart',
-            added_date: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(),
-            last_updated: new Date().toISOString(),
-          },
-          {
-            id: 2,
-            symbol: 'NVDA',
-            asset_type: 'stock',
-            score: 92,
-            reason: 'AI sector momentum',
-            added_date: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(),
-            last_updated: new Date().toISOString(),
-          },
-          {
-            id: 3,
-            symbol: 'AAPL',
-            asset_type: 'stock',
-            score: 65,
-            reason: 'Watching for reversal',
-            added_date: new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString(),
-            last_updated: new Date().toISOString(),
-          },
-          {
-            id: 4,
-            symbol: 'MSFT',
-            asset_type: 'stock',
-            score: 78,
-            reason: 'Cloud growth potential',
-            added_date: new Date(Date.now() - 21 * 24 * 60 * 60 * 1000).toISOString(),
-            last_updated: new Date().toISOString(),
-          },
-        ],
-        count: 4,
+        watchlist: [],
+        count: 0,
+        lastUpdated: new Date().toISOString(),
       });
     } finally {
       setIsLoading(false);
@@ -99,7 +91,13 @@ export default function WatchlistPage() {
   };
 
   const addToWatchlist = async () => {
-    if (!newSymbol.trim()) return;
+    if (!newSymbol.trim()) {
+      setModalError('Please enter a stock symbol');
+      return;
+    }
+
+    setIsAddingSymbol(true);
+    setModalError(null);
 
     try {
       await apiClient.post('/watchlist', {
@@ -113,7 +111,17 @@ export default function WatchlistPage() {
       setAddSymbolModal(false);
       fetchWatchlist();
     } catch (err: any) {
-      setError(err.message || 'Failed to add symbol to watchlist');
+      // Extract error message from the API response or use the error message
+      const errorMessage = err.message || 'Failed to add symbol to watchlist';
+      console.error('Add to watchlist error:', {
+        message: err.message,
+        status: err.status,
+        details: err.details,
+        fullError: err
+      });
+      setModalError(errorMessage);
+    } finally {
+      setIsAddingSymbol(false);
     }
   };
 
@@ -121,13 +129,79 @@ export default function WatchlistPage() {
     if (!confirm(`Remove ${symbol} from watchlist?`)) return;
 
     try {
-      await apiClient.delete('/watchlist', {
-        data: { symbol },
-      });
-      fetchWatchlist();
+      await apiClient.delete(`/watchlist?symbol=${encodeURIComponent(symbol)}`);
+      await fetchWatchlist();
     } catch (err: any) {
       setError(err.message || 'Failed to remove symbol from watchlist');
+      console.error('Remove error:', err);
     }
+  };
+
+  const analyzeSymbol = async (symbol: string) => {
+    if (analysisData[symbol]) {
+      setExpandedSymbol(expandedSymbol === symbol ? null : symbol);
+      return;
+    }
+
+    setAnalysisLoading(symbol);
+    try {
+      const response = await apiClient.get(`/watchlist/analyze?symbol=${symbol}`);
+      setAnalysisData(prev => ({
+        ...prev,
+        [symbol]: response
+      }));
+      setExpandedSymbol(symbol);
+    } catch (err: any) {
+      setError(`Failed to analyze ${symbol}: ${err.message}`);
+    } finally {
+      setAnalysisLoading(null);
+    }
+  };
+
+  const scanAllWatchlist = async () => {
+    setIsScanning(true);
+    setError(null);
+    try {
+      const stocks = getSortedSymbols();
+      const updates: { [key: string]: number } = {};
+
+      for (const stock of stocks) {
+        try {
+          const response = await apiClient.get(`/watchlist/analyze?symbol=${stock.symbol}`);
+          // Use some logic to calculate score from the analysis
+          updates[stock.symbol] = calculateScoreFromAnalysis(response);
+        } catch (err) {
+          console.error(`Failed to scan ${stock.symbol}:`, err);
+        }
+      }
+
+      // Update local state with new scores
+      if (Object.keys(updates).length > 0) {
+        setWatchlistData(prev => ({
+          ...prev,
+          watchlist: prev.watchlist.map(item => ({
+            ...item,
+            score: updates[item.symbol] ?? item.score
+          }))
+        }));
+      }
+
+      setError(null);
+    } catch (err: any) {
+      setError(err.message || 'Failed to scan all stocks');
+    } finally {
+      setIsScanning(false);
+    }
+  };
+
+  const calculateScoreFromAnalysis = (analysis: any): number => {
+    // Simple scoring logic based on RSI and trend
+    let score = 5; // base score
+    if (analysis.rsi < 35) score += 2; // oversold is good
+    if (analysis.rsi > 75) score -= 1; // overbought is bad
+    if (analysis.trend === 'bullish') score += 2;
+    if (analysis.trend === 'bearish') score -= 2;
+    return Math.min(10, Math.max(0, score));
   };
 
   const getSortedSymbols = () => {
@@ -161,8 +235,8 @@ export default function WatchlistPage() {
   };
 
   const getScoreBadgeColor = (score: number) => {
-    if (score >= 80) return 'bg-green-500/20 border-green-500/50 text-green-400';
-    if (score >= 60) return 'bg-yellow-500/20 border-yellow-500/50 text-yellow-400';
+    if (score >= 8) return 'bg-green-500/20 border-green-500/50 text-green-400';
+    if (score >= 6) return 'bg-yellow-500/20 border-yellow-500/50 text-yellow-400';
     return 'bg-red-500/20 border-red-500/50 text-red-400';
   };
 
@@ -214,6 +288,14 @@ export default function WatchlistPage() {
             Refresh
           </button>
           <button
+            onClick={scanAllWatchlist}
+            disabled={isScanning}
+            className="flex items-center gap-2 bg-purple-600 hover:bg-purple-700 disabled:bg-slate-600 text-white px-4 py-2 rounded-lg font-semibold transition"
+          >
+            <RefreshCw className={`w-4 h-4 ${isScanning ? 'animate-spin' : ''}`} />
+            Scan All
+          </button>
+          <button
             onClick={() => setAddSymbolModal(true)}
             className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-semibold transition"
           >
@@ -246,7 +328,10 @@ export default function WatchlistPage() {
                   type="text"
                   placeholder="e.g., TSLA"
                   value={newSymbol}
-                  onChange={(e) => setNewSymbol(e.target.value.toUpperCase())}
+                  onChange={(e) => {
+                    setNewSymbol(e.target.value.toUpperCase());
+                    setModalError(null);
+                  }}
                   onKeyPress={(e) => e.key === 'Enter' && addToWatchlist()}
                   className="w-full px-4 py-2 bg-slate-700 border border-slate-600 rounded text-white placeholder-slate-400 focus:outline-none focus:border-blue-500"
                   autoFocus
@@ -266,19 +351,28 @@ export default function WatchlistPage() {
                 />
               </div>
 
+              {modalError && (
+                <div className="bg-red-500/20 border border-red-500/50 rounded-lg p-3 text-red-400 text-sm">
+                  {modalError}
+                </div>
+              )}
+
               <div className="flex gap-2 justify-end">
                 <button
-                  onClick={() => setAddSymbolModal(false)}
+                  onClick={() => {
+                    setAddSymbolModal(false);
+                    setModalError(null);
+                  }}
                   className="px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg font-semibold transition"
                 >
                   Cancel
                 </button>
                 <button
                   onClick={addToWatchlist}
-                  disabled={!newSymbol.trim()}
-                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-700 text-white rounded-lg font-semibold transition"
+                  disabled={!newSymbol.trim() || isAddingSymbol}
+                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-600 text-white rounded-lg font-semibold transition"
                 >
-                  Add
+                  {isAddingSymbol ? 'Adding...' : 'Add'}
                 </button>
               </div>
             </div>
@@ -366,55 +460,247 @@ export default function WatchlistPage() {
             </thead>
             <tbody>
               {getSortedSymbols().map((item) => (
-                <tr
-                  key={item.symbol}
-                  className="border-b border-slate-700 hover:bg-slate-700/50 transition"
-                >
-                  {/* Symbol */}
-                  <td className="px-4 py-4">
-                    <span className="font-bold text-blue-400">{item.symbol}</span>
-                  </td>
+                <React.Fragment key={item.symbol}>
+                  <tr
+                    onClick={() => analyzeSymbol(item.symbol)}
+                    className="border-b border-slate-700 hover:bg-slate-700/50 transition cursor-pointer"
+                  >
+                    {/* Symbol */}
+                    <td className="px-4 py-4">
+                      <span className="font-bold text-blue-400">{item.symbol}</span>
+                    </td>
 
-                  {/* Score */}
-                  <td className="px-4 py-4 text-center">
-                    <span className={`inline-block px-3 py-1 rounded-lg font-bold text-sm border ${getScoreBadgeColor(item.score)}`}>
-                      {item.score.toFixed(0)}
-                    </span>
-                  </td>
+                    {/* Score */}
+                    <td className="px-4 py-4 text-center">
+                      <span className={`inline-block px-3 py-1 rounded-lg font-bold text-sm border ${getScoreBadgeColor(item.score / 100)}`}>
+                        {(item.score / 100).toFixed(1)}
+                      </span>
+                    </td>
 
-                  {/* Reason */}
-                  <td className="px-4 py-4">
-                    <p className="text-sm text-slate-400">
-                      {safeValue(item.reason) || 'No reason provided'}
-                    </p>
-                  </td>
+                    {/* Reason */}
+                    <td className="px-4 py-4">
+                      <p className="text-sm text-slate-400">
+                        {safeValue(item.reason) || 'No reason provided'}
+                      </p>
+                    </td>
 
-                  {/* Date Added */}
-                  <td className="px-4 py-4 text-center">
-                    <p className="text-sm text-slate-400">
-                      {formatDate(safeValue(item.added_date))}
-                    </p>
-                  </td>
+                    {/* Date Added */}
+                    <td className="px-4 py-4 text-center">
+                      <p className="text-sm text-slate-400">
+                        {formatDate(safeValue(item.added_date))}
+                      </p>
+                    </td>
 
-                  {/* Actions */}
-                  <td className="px-4 py-4 text-center">
-                    <div className="flex items-center justify-center gap-2">
-                      <button
-                        title="View details"
-                        className="text-blue-400 hover:text-blue-300 transition"
-                      >
-                        <Eye className="w-4 h-4" />
-                      </button>
-                      <button
-                        onClick={() => removeFromWatchlist(item.symbol)}
-                        title="Remove from watchlist"
-                        className="text-red-400 hover:text-red-300 transition"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </div>
-                  </td>
-                </tr>
+                    {/* Actions */}
+                    <td className="px-4 py-4 text-center">
+                      <div className="flex items-center justify-center gap-2">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            analyzeSymbol(item.symbol);
+                          }}
+                          title={expandedSymbol === item.symbol ? 'Hide details' : 'View details'}
+                          className={`transition ${
+                            expandedSymbol === item.symbol
+                              ? 'text-blue-300'
+                              : 'text-blue-400 hover:text-blue-300'
+                          }`}
+                        >
+                          <Eye className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            removeFromWatchlist(item.symbol);
+                          }}
+                          title="Remove from watchlist"
+                          className="text-red-400 hover:text-red-300 transition"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+
+                  {/* Expanded Analysis Row */}
+                  {expandedSymbol === item.symbol && (
+                    <tr className="border-b border-slate-700 bg-slate-800/50">
+                      <td colSpan={5} className="px-4 py-4">
+                        {analysisLoading ? (
+                          <div className="flex items-center justify-center gap-2 text-slate-400">
+                            <RefreshCw className="w-4 h-4 animate-spin" />
+                            Analyzing {item.symbol}...
+                          </div>
+                        ) : analysisData && analysisData[item.symbol] ? (
+                          <div className="space-y-4">
+                            {/* Core Metrics Grid */}
+                            <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+                              {/* Current Price */}
+                              <div className="bg-slate-700 rounded p-3">
+                                <p className="text-slate-400 text-xs font-semibold mb-1">Price</p>
+                                <p className="text-white font-bold text-lg">
+                                  ${analysisData[item.symbol].current_price?.toFixed(2) || 'N/A'}
+                                </p>
+                              </div>
+
+                              {/* RSI */}
+                              <div className="bg-slate-700 rounded p-3">
+                                <p className="text-slate-400 text-xs font-semibold mb-1">RSI</p>
+                                <p className="text-white font-bold text-lg">
+                                  {analysisData[item.symbol].rsi?.toFixed(1) || 'N/A'}
+                                </p>
+                                <p className="text-xs text-slate-400 mt-1">
+                                  {analysisData[item.symbol].rsi ? (
+                                    analysisData[item.symbol].rsi! > 70
+                                      ? '🔴 Overbought'
+                                      : analysisData[item.symbol].rsi! < 30
+                                        ? '🟢 Oversold'
+                                        : '🟡 Neutral'
+                                  ) : (
+                                    'N/A'
+                                  )}
+                                </p>
+                              </div>
+
+                              {/* ATR */}
+                              <div className="bg-slate-700 rounded p-3">
+                                <p className="text-slate-400 text-xs font-semibold mb-1">ATR</p>
+                                <p className="text-white font-bold text-lg">
+                                  {analysisData[item.symbol].atr?.toFixed(2) || 'N/A'}
+                                </p>
+                              </div>
+
+                              {/* SMA 20 */}
+                              <div className="bg-slate-700 rounded p-3">
+                                <p className="text-slate-400 text-xs font-semibold mb-1">SMA 20</p>
+                                <p className="text-white font-bold text-lg">
+                                  ${analysisData[item.symbol].sma_20?.toFixed(2) || 'N/A'}
+                                </p>
+                              </div>
+
+                              {/* Trend */}
+                              <div className="bg-slate-700 rounded p-3">
+                                <p className="text-slate-400 text-xs font-semibold mb-1">Trend</p>
+                                <p className={`font-bold text-lg ${
+                                  analysisData[item.symbol].trend === 'bullish'
+                                    ? 'text-green-400'
+                                    : analysisData[item.symbol].trend === 'bearish'
+                                      ? 'text-red-400'
+                                      : 'text-yellow-400'
+                                }`}>
+                                  {analysisData[item.symbol].trend?.toUpperCase() || 'N/A'}
+                                </p>
+                              </div>
+                            </div>
+
+                            {/* Support & Resistance */}
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-slate-700/50 rounded p-3">
+                              <div>
+                                <p className="text-slate-400 text-xs font-semibold mb-2">Support Level</p>
+                                <p className="text-green-400 font-bold text-lg">
+                                  ${analysisData[item.symbol].support_level?.toFixed(2) || 'N/A'}
+                                </p>
+                                {analysisData[item.symbol].distance_to_support !== undefined && (
+                                  <p className="text-xs text-slate-400 mt-1">
+                                    {analysisData[item.symbol].distance_to_support?.toFixed(2)}% below
+                                  </p>
+                                )}
+                              </div>
+                              <div>
+                                <p className="text-slate-400 text-xs font-semibold mb-2">Resistance Level</p>
+                                <p className="text-red-400 font-bold text-lg">
+                                  ${analysisData[item.symbol].resistance_level?.toFixed(2) || 'N/A'}
+                                </p>
+                                {analysisData[item.symbol].distance_to_resistance !== undefined && (
+                                  <p className="text-xs text-slate-400 mt-1">
+                                    {analysisData[item.symbol].distance_to_resistance?.toFixed(2)}% above
+                                  </p>
+                                )}
+                              </div>
+                            </div>
+
+                            {/* Chart Pattern Analysis */}
+                            {analysisData[item.symbol].chart_pattern && (
+                              <div className="bg-slate-700/50 rounded p-3">
+                                <p className="text-slate-400 text-xs font-semibold mb-2">Chart Pattern</p>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                  <div>
+                                    <p className="text-white font-semibold">
+                                      {analysisData[item.symbol].chart_pattern.pattern}
+                                    </p>
+                                    <p className="text-xs text-slate-400">
+                                      Direction: <span className={
+                                        analysisData[item.symbol].chart_pattern.direction === 'LONG'
+                                          ? 'text-green-400'
+                                          : analysisData[item.symbol].chart_pattern.direction === 'SHORT'
+                                            ? 'text-red-400'
+                                            : 'text-yellow-400'
+                                      }>
+                                        {analysisData[item.symbol].chart_pattern.direction}
+                                      </span>
+                                    </p>
+                                    <p className="text-xs text-slate-400 mt-1">
+                                      Confidence: {analysisData[item.symbol].chart_pattern.confidence?.toFixed(1)}%
+                                    </p>
+                                  </div>
+                                  <div>
+                                    <p className="text-xs text-slate-400 mb-1">
+                                      Target: ${analysisData[item.symbol].chart_pattern.target_up || analysisData[item.symbol].chart_pattern.target_down || 'N/A'}
+                                    </p>
+                                    <p className="text-xs text-slate-400 mb-1">
+                                      Stop Loss: ${analysisData[item.symbol].chart_pattern.stop_loss?.toFixed(2) || 'N/A'}
+                                    </p>
+                                    <p className="text-xs text-slate-400">
+                                      Risk:Reward: {analysisData[item.symbol].chart_pattern.risk_reward?.toFixed(2) || 'N/A'}:1
+                                    </p>
+                                  </div>
+                                </div>
+                                {analysisData[item.symbol].chart_pattern.reasoning && (
+                                  <p className="text-xs text-slate-300 mt-2 italic">
+                                    {analysisData[item.symbol].chart_pattern.reasoning}
+                                  </p>
+                                )}
+                              </div>
+                            )}
+
+                            {/* Trading Recommendation */}
+                            {analysisData[item.symbol].trading_recommendation && (
+                              <div className={`rounded p-3 ${
+                                analysisData[item.symbol].trading_recommendation.action === 'BUY'
+                                  ? 'bg-green-900/30 border border-green-700'
+                                  : analysisData[item.symbol].trading_recommendation.action === 'SELL'
+                                    ? 'bg-red-900/30 border border-red-700'
+                                    : 'bg-yellow-900/30 border border-yellow-700'
+                              }`}>
+                                <div className="flex justify-between items-start mb-2">
+                                  <p className={`font-bold text-lg ${
+                                    analysisData[item.symbol].trading_recommendation.action === 'BUY'
+                                      ? 'text-green-400'
+                                      : analysisData[item.symbol].trading_recommendation.action === 'SELL'
+                                        ? 'text-red-400'
+                                        : 'text-yellow-400'
+                                  }`}>
+                                    {analysisData[item.symbol].trading_recommendation.action}
+                                  </p>
+                                  <p className="text-xs text-slate-300">
+                                    Confidence: {analysisData[item.symbol].trading_recommendation.confidence?.toFixed(1)}%
+                                  </p>
+                                </div>
+                                {analysisData[item.symbol].trading_recommendation.reasoning && (
+                                  <p className="text-xs text-slate-300">
+                                    {analysisData[item.symbol].trading_recommendation.reasoning}
+                                  </p>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        ) : (
+                          <p className="text-slate-400 text-center">Failed to load analysis</p>
+                        )}
+                      </td>
+                    </tr>
+                  )}
+                </React.Fragment>
               ))}
             </tbody>
           </table>
@@ -434,7 +720,7 @@ export default function WatchlistPage() {
             <p className="text-2xl font-bold text-white">
               {watchlistData.count > 0 ? (
                 (
-                  getSortedSymbols().reduce((sum, item) => sum + item.score, 0) /
+                  getSortedSymbols().reduce((sum, item) => sum + (item.score / 100), 0) /
                   getSortedSymbols().length
                 ).toFixed(1)
               ) : (
@@ -446,7 +732,7 @@ export default function WatchlistPage() {
           <div className="bg-slate-800 rounded-lg border border-slate-700 p-4">
             <p className="text-slate-400 text-sm font-semibold mb-2">High Scoring</p>
             <p className="text-2xl font-bold text-green-400">
-              {getSortedSymbols().filter((item) => item.score >= 80).length}/{watchlistData.count}
+              {getSortedSymbols().filter((item) => item.score >= 8).length}/{watchlistData.count}
             </p>
           </div>
         </div>

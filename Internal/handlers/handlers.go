@@ -154,14 +154,14 @@ func HandleAnalyzeSingle(ctx context.Context, assetType string, q *database.Quer
 
 	err = datafeed.CalculateAndStoreRSI(symbol, bars)
 	if err != nil {
-		fmt.Printf("Failed to calculate and store RSI: %v\n", err)
-		return
+		fmt.Printf("Warning: Failed to calculate and store RSI: %v\n", err)
+		// Don't return - continue with analysis
 	}
 
 	err = datafeed.CalculateAndStoreATR(symbol, bars)
 	if err != nil {
-		fmt.Printf("Failed to calculate and store ATR: %v\n", err)
-		return
+		fmt.Printf("Warning: Failed to calculate and store ATR: %v\n", err)
+		// Don't return - continue with analysis
 	}
 
 	displayChoice, _ := interactive.ShowDisplayMenu()

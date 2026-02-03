@@ -872,7 +872,6 @@ func (q *Queries) GetTradeHistory(ctx context.Context, arg GetTradeHistoryParams
 const getWatchlist = `-- name: GetWatchlist :many
 SELECT id, symbol, asset_type, score, reason, added_date, last_updated
 FROM watchlist
-WHERE status = 'active'
 ORDER BY score DESC
 `
 
@@ -886,7 +885,7 @@ type GetWatchlistRow struct {
 	LastUpdated sql.NullTime   `json:"last_updated"`
 }
 
-// Get all active watchlist items, ordered by score
+// Get all watchlist items, ordered by score
 func (q *Queries) GetWatchlist(ctx context.Context) ([]GetWatchlistRow, error) {
 	rows, err := q.db.QueryContext(ctx, getWatchlist)
 	if err != nil {
@@ -1055,12 +1054,11 @@ func (q *Queries) RemoveFromSkipBacklog(ctx context.Context, symbol string) erro
 }
 
 const removeFromWatchlist = `-- name: RemoveFromWatchlist :exec
-UPDATE watchlist
-SET status = 'removed', last_updated = CURRENT_TIMESTAMP
+DELETE FROM watchlist
 WHERE symbol = $1
 `
 
-// Remove symbol from watchlist by setting status to 'removed'
+// Remove symbol from watchlist by actually deleting the record
 func (q *Queries) RemoveFromWatchlist(ctx context.Context, symbol string) error {
 	_, err := q.db.ExecContext(ctx, removeFromWatchlist, symbol)
 	return err

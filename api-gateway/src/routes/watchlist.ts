@@ -28,41 +28,91 @@ router.get('/', async (req: Request, res: Response) => {
 // POST /api/watchlist - Add symbol to watchlist
 router.post('/', async (req: Request, res: Response) => {
   try {
-    const { symbol, reason } = req.body;
+    const { symbol, reason, score } = req.body;
 
     if (!symbol) {
       res.status(400).json({ error: 'Symbol is required' });
       return;
     }
-    logger.info('Adding to watchlist', { symbol, reason });
+    logger.info('Adding to watchlist', { symbol, reason, score });
     const data = await apiClient.post('/api/watchlist', { 
       symbol, 
+      score: score || 50,
       reason: reason || '' 
     });
     logger.info('Symbol added to watchlist', { symbol });
     res.json(data);
   } catch (error: any) {
-    console.error('Add to watchlist error:', error.message);
-    res.status(500).json({ error: 'Failed to add to watchlist' });
+    logger.error('Add to watchlist error', {
+      message: error.message,
+      status: error.response?.status,
+      data: error.response?.data,
+    });
+    res.status(error.response?.status || 500).json({
+      error: error.response?.data?.error || 'Failed to add to watchlist',
+      details: error.response?.data?.details,
+    });
   }
 });
 
 // DELETE /api/watchlist - Remove symbol from watchlist
 router.delete('/', async (req: Request, res: Response) => {
   try {
-    const { symbol } = req.body;
+    // Get symbol from query parameter first, then from body as fallback
+    const symbol = (req.query.symbol as string) || req.body?.symbol;
 
     if (!symbol) {
       res.status(400).json({ error: 'Symbol is required' });
       return;
     }
     logger.info('Removing from watchlist', { symbol });
-    const data = await apiClient.delete('/api/watchlist', { symbol });
-    logger.info('Symbol removed from watchlist', { symbol });
+    // Call Go backend DELETE endpoint
+    const response = await apiClient.delete(`/api/watchlist?symbol=${encodeURIComponent(symbol)}`);
+    logger.info('Symbol removed from watchlist', { symbol, response });
+    res.json(response);
+  } catch (error: any) {
+    const status = error.response?.status || 500;
+    const errorData = error.response?.data || {};
+    const errorMessage = errorData?.error || errorData?.message || error.message || 'Failed to remove from watchlist';
+    
+    logger.error('Remove from watchlist error', {
+      message: error.message,
+      status: status,
+      data: errorData,
+      symbol: (req.query.symbol as string) || req.body?.symbol,
+    });
+    
+    res.status(status).json({
+      error: errorMessage,
+      details: errorData?.details || error.message,
+    });
+  }
+});
+
+// GET /api/watchlist/analyze - Analyze individual stock
+router.get('/analyze', async (req: Request, res: Response) => {
+  try {
+    const symbol = req.query.symbol as string;
+
+    if (!symbol) {
+      res.status(400).json({ error: 'Symbol parameter is required' });
+      return;
+    }
+    logger.info('Analyzing stock', { symbol });
+    const data = await apiClient.get(`/api/watchlist/analyze?symbol=${symbol}`);
+    logger.info('Stock analyzed successfully', { symbol });
     res.json(data);
   } catch (error: any) {
-    console.error('Remove from watchlist error:', error.message);
-    res.status(500).json({ error: 'Failed to remove from watchlist' });
+    logger.error('Stock analysis error', {
+      message: error.message,
+      status: error.response?.status,
+      data: error.response?.data,
+      symbol: req.query.symbol,
+    });
+    res.status(error.response?.status || 500).json({
+      error: error.response?.data?.error || 'Failed to analyze stock',
+      details: error.response?.data?.details,
+    });
   }
 });
 

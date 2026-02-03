@@ -128,7 +128,7 @@ export default function ScouterPage() {
               <input
                 type="range"
                 min="0"
-                max="100"
+                max="10"
                 value={minScore}
                 onChange={(e) => setMinScore(parseInt(e.target.value))}
                 className="flex-1 h-2 bg-slate-700 rounded cursor-pointer"
@@ -248,7 +248,7 @@ export default function ScouterPage() {
                   <input
                     type="range"
                     min="0"
-                    max="100"
+                    max="10"
                     value={minScore}
                     onChange={(e) => setMinScore(parseInt(e.target.value))}
                     className="flex-1 h-2 bg-slate-700 rounded cursor-pointer"
@@ -380,11 +380,11 @@ export default function ScouterPage() {
                       </td>
                       <td className="px-6 py-4 text-right">
                         <span className={`px-3 py-1 rounded text-sm font-bold ${
-                          opp.score >= 80 ? 'bg-green-900/30 text-green-400' : 
-                          opp.score >= 60 ? 'bg-yellow-900/30 text-yellow-400' : 
+                          opp.score >= 8 ? 'bg-green-900/30 text-green-400' : 
+                          opp.score >= 6 ? 'bg-yellow-900/30 text-yellow-400' : 
                           'bg-orange-900/30 text-orange-400'
                         }`}>
-                          {opp.score.toFixed(1)}
+                          {(opp.score / 10).toFixed(1)}
                         </span>
                       </td>
                       <td className="px-6 py-4 text-right text-slate-300">
@@ -427,11 +427,11 @@ export default function ScouterPage() {
                               <div className="bg-slate-800/50 rounded p-3 border border-slate-700">
                                 <p className="text-xs text-slate-400 mb-1">Score</p>
                                 <p className={`text-lg font-bold ${
-                                  opp.score >= 80 ? 'text-green-400' : 
-                                  opp.score >= 60 ? 'text-yellow-400' : 
+                                  opp.score >= 8 ? 'text-green-400' : 
+                                  opp.score >= 6 ? 'text-yellow-400' : 
                                   'text-orange-400'
                                 }`}>
-                                  {opp.score.toFixed(2)}
+                                  {(opp.score / 10).toFixed(2)}
                                 </p>
                               </div>
                               
@@ -480,11 +480,11 @@ export default function ScouterPage() {
                     <div className="font-semibold text-white text-lg">{opp.symbol}</div>
                   </div>
                   <span className={`px-3 py-1 rounded text-sm font-bold ${
-                    opp.score >= 80 ? 'bg-green-900/30 text-green-400' : 
-                    opp.score >= 60 ? 'bg-yellow-900/30 text-yellow-400' : 
+                    opp.score >= 8 ? 'bg-green-900/30 text-green-400' : 
+                    opp.score >= 6 ? 'bg-yellow-900/30 text-yellow-400' : 
                     'bg-orange-900/30 text-orange-400'
                   }`}>
-                    {opp.score.toFixed(1)}
+                    {(opp.score / 10).toFixed(1)}
                   </span>
                 </div>
 
@@ -543,19 +543,19 @@ export default function ScouterPage() {
           </h3>
           <ul className="space-y-2 text-slate-300 text-sm">
             <li className="flex gap-2">
-              <span className="text-blue-400 font-bold">80+</span>
+              <span className="text-blue-400 font-bold">8-10</span>
               <span>Excellent - Strong buy signals</span>
             </li>
             <li className="flex gap-2">
-              <span className="text-yellow-400 font-bold">60-79</span>
+              <span className="text-yellow-400 font-bold">6-7.9</span>
               <span>Good - Positive indicators</span>
             </li>
             <li className="flex gap-2">
-              <span className="text-orange-400 font-bold">50-59</span>
+              <span className="text-orange-400 font-bold">5-5.9</span>
               <span>Fair - Moderate potential</span>
             </li>
             <li className="flex gap-2">
-              <span className="text-slate-400 font-bold">&lt;50</span>
+              <span className="text-slate-400 font-bold">&lt;5</span>
               <span>Poor - Not recommended</span>
             </li>
           </ul>
