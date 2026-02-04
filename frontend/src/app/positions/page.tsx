@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { AlertCircle, TrendingUp, TrendingDown, X } from 'lucide-react';
+import { AlertCircle, TrendingUp, TrendingDown, Plus, Minus } from 'lucide-react';
 import { usePositionsTable, type Position } from '@/hooks/usePositionsTable';
 import apiClient from '@/lib/apiClient';
 
@@ -10,16 +10,49 @@ export default function PositionsPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [sortBy, setSortBy] = useState<'symbol' | 'pnl' | 'value'>('symbol');
   const [closingSymbol, setClosingSymbol] = useState<string | null>(null);
+  const [buyingSymbol, setBuyingSymbol] = useState<string | null>(null);
 
-  const handleClosePosition = async (symbol: string) => {
+  const handleClosePosition = async (symbol: string, quantity: number) => {
+    // Ask for confirmation before selling
+    const confirmed = window.confirm(
+      `Are you sure you want to sell all ${quantity} shares of ${symbol}? This action cannot be undone.`
+    );
+    if (!confirmed) return;
+
     setClosingSymbol(symbol);
     try {
-      await apiClient.delete(`/api/positions/${symbol}`);
+      // Sell all shares for this position
+      await apiClient.post('/trades', {
+        symbol,
+        side: 'sell',
+        quantity: quantity,
+      });
       await refetch();
     } catch (err) {
       console.error('Failed to close position:', err);
     } finally {
       setClosingSymbol(null);
+    }
+  };
+
+  const handleBuyMore = async (symbol: string) => {
+    const quantityStr = prompt(`How many shares of ${symbol} do you want to buy?`, '1');
+    if (!quantityStr || isNaN(parseFloat(quantityStr)) || parseFloat(quantityStr) <= 0) {
+      return;
+    }
+    
+    setBuyingSymbol(symbol);
+    try {
+      await apiClient.post('/trades', {
+        symbol,
+        side: 'buy',
+        quantity: parseFloat(quantityStr),
+      });
+      await refetch();
+    } catch (err) {
+      console.error('Failed to buy more shares:', err);
+    } finally {
+      setBuyingSymbol(null);
     }
   };
 
@@ -201,13 +234,22 @@ export default function PositionsPage() {
                       >
                         {isPositive ? '+' : ''}{pnlPercent.toFixed(2)}%
                       </td>
-                      <td className="px-6 py-4 text-center">
+                      <td className="px-6 py-4 text-center flex gap-2 justify-center">
                         <button 
-                          onClick={() => handleClosePosition(pos.symbol)}
-                          disabled={closingSymbol === pos.symbol}
-                          className="p-2 hover:bg-red-900/20 disabled:opacity-50 rounded transition text-red-400 hover:text-red-300"
+                          onClick={() => handleBuyMore(pos.symbol)}
+                          disabled={buyingSymbol === pos.symbol}
+                          className="px-3 py-1 bg-green-600 hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed rounded text-sm font-medium text-white transition flex items-center gap-1"
                         >
-                          <X className="w-4 h-4" />
+                          <Plus className="w-4 h-4" />
+                          {buyingSymbol === pos.symbol ? 'Buying...' : 'Buy'}
+                        </button>
+                        <button 
+                          onClick={() => handleClosePosition(pos.symbol, parseFloat(pos.qty))}
+                          disabled={closingSymbol === pos.symbol}
+                          className="px-3 py-1 bg-red-600 hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed rounded text-sm font-medium text-white transition flex items-center gap-1"
+                        >
+                          <Minus className="w-4 h-4" />
+                          {closingSymbol === pos.symbol ? 'Selling...' : 'Sell'}
                         </button>
                       </td>
                     </tr>
@@ -231,9 +273,24 @@ export default function PositionsPage() {
                       <div className="font-semibold text-white text-lg">{pos.symbol}</div>
                       <div className="text-xs text-slate-400">{pos.exchange}</div>
                     </div>
-                    <button className="p-2 hover:bg-red-900/20 rounded transition text-red-400">
-                      <X className="w-4 h-4" />
-                    </button>
+                    <div className="flex gap-2">
+                      <button 
+                        onClick={() => handleBuyMore(pos.symbol)}
+                        disabled={buyingSymbol === pos.symbol}
+                        className="px-3 py-1 bg-green-600 hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed rounded text-sm font-medium text-white transition flex items-center gap-1"
+                      >
+                        <Plus className="w-4 h-4" />
+                        {buyingSymbol === pos.symbol ? 'Buying...' : 'Buy'}
+                      </button>
+                      <button 
+                        onClick={() => handleClosePosition(pos.symbol, parseFloat(pos.qty))}
+                        disabled={closingSymbol === pos.symbol}
+                        className="px-3 py-1 bg-red-600 hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed rounded text-sm font-medium text-white transition flex items-center gap-1"
+                      >
+                        <Minus className="w-4 h-4" />
+                        {closingSymbol === pos.symbol ? 'Selling...' : 'Sell'}
+                      </button>
+                    </div>
                   </div>
 
                   <div className="space-y-2 text-sm mb-3">

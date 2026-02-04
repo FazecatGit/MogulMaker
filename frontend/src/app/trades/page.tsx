@@ -1,12 +1,22 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { AlertCircle, TrendingUp, TrendingDown, Clock, Search, ArrowUp, ArrowDown } from 'lucide-react';
 import { useTrades } from '@/hooks/useTrades';
+import { useTradeStatistics } from '@/hooks/useTradeStatistics';
 import apiClient from '@/lib/apiClient';
+
+interface Position {
+  symbol: string;
+  unrealized_pl: number;
+  unrealized_plpc: number;
+  current_price: number;
+  [key: string]: any;
+}
 
 export default function TradesPage() {
   const { data, isLoading, error, isError } = useTrades();
+  const { data: statsData, isLoading: statsLoading } = useTradeStatistics();
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState<'all' | 'open' | 'closed'>('all');
   const [sortBy, setSortBy] = useState<'recent' | 'pnl' | 'duration'>('recent');
@@ -14,6 +24,29 @@ export default function TradesPage() {
   const [tradeQuantity, setTradeQuantity] = useState(1);
   const [tradingLoading, setTradingLoading] = useState(false);
   const [tradingMessage, setTradingMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [positions, setPositions] = useState<Position[]>([]);
+
+  // Fetch positions for unrealized P&L
+  useEffect(() => {
+    const fetchPositions = async () => {
+      try {
+        const response = await apiClient.get('/risk');
+        const backendData = response?.data || response;
+        if (backendData?.positions) {
+          setPositions(backendData.positions);
+        }
+      } catch (err) {
+        console.error('Failed to fetch positions:', err);
+      }
+    };
+
+    fetchPositions();
+    const interval = setInterval(fetchPositions, 30000); // Refresh every 30s
+    return () => clearInterval(interval);
+  }, []);
+
+  // Create position map for quick lookup
+  const positionMap = new Map(positions.map(p => [p.symbol, p]));
 
   // Filter trades
   const filteredTrades = (data?.trades || []).filter((trade) => {
@@ -25,8 +58,15 @@ export default function TradesPage() {
   // Sort trades
   const sortedTrades = [...filteredTrades].sort((a, b) => {
     switch (sortBy) {
-      case 'pnl':
-        return parseFloat(b.realized_pl) - parseFloat(a.realized_pl);
+      case 'pnl': {
+        const pnlA = a.status === 'open' 
+          ? (positionMap.get(a.symbol)?.unrealized_pl || 0)
+          : (a.realized_pl || 0);
+        const pnlB = b.status === 'open'
+          ? (positionMap.get(b.symbol)?.unrealized_pl || 0)
+          : (b.realized_pl || 0);
+        return pnlB - pnlA;
+      }
       case 'duration':
         const durationA = a.duration_ms || 0;
         const durationB = b.duration_ms || 0;
@@ -84,7 +124,7 @@ export default function TradesPage() {
   const trades = sortedTrades;
   const openTrades = trades.filter((t) => t.status === 'open').length;
   const closedTrades = trades.filter((t) => t.status === 'closed').length;
-  const totalPnL = trades.reduce((sum, t) => sum + parseFloat(t.realized_pl || '0'), 0);
+  const totalPnL = trades.reduce((sum, t) => sum + (typeof t.realized_pl === 'number' ? t.realized_pl : parseFloat(t.realized_pl || '0')), 0);
 
   const formatDuration = (ms?: number) => {
     if (!ms || ms <= 0) return 'Ongoing';
@@ -154,6 +194,39 @@ export default function TradesPage() {
           {trades.length} trade{trades.length !== 1 ? 's' : ''} • {openTrades} open • {closedTrades} closed
         </p>
       </div>
+
+      {/* Trade Statistics */}
+      {statsData && (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="bg-slate-800 rounded-lg border border-slate-700 p-4">
+            <p className="text-slate-400 text-sm mb-1">Win Rate</p>
+            <p className="text-2xl font-bold text-white">{statsData.win_rate.toFixed(1)}%</p>
+            <p className="text-xs text-slate-500 mt-1">{statsData.winning_trades}W / {statsData.losing_trades}L</p>
+          </div>
+
+          <div className={`bg-slate-800 rounded-lg border border-slate-700 p-4 ${statsData.total_pnl >= 0 ? 'border-green-600/30' : 'border-red-600/30'}`}>
+            <p className="text-slate-400 text-sm mb-1">Realized P&L</p>
+            <p className={`text-2xl font-bold ${statsData.total_pnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+              ${statsData.total_pnl.toFixed(2)}
+            </p>
+            <p className="text-xs text-slate-500 mt-1">Avg: ${statsData.avg_pnl.toFixed(2)}</p>
+          </div>
+
+          <div className={`bg-slate-800 rounded-lg border border-slate-700 p-4 ${statsData.open_pnl >= 0 ? 'border-green-600/30' : 'border-red-600/30'}`}>
+            <p className="text-slate-400 text-sm mb-1">Unrealized P&L</p>
+            <p className={`text-2xl font-bold ${statsData.open_pnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+              ${statsData.open_pnl.toFixed(2)}
+            </p>
+            <p className="text-xs text-slate-500 mt-1">{statsData.open_positions} open position(s)</p>
+          </div>
+
+          <div className="bg-slate-800 rounded-lg border border-slate-700 p-4">
+            <p className="text-slate-400 text-sm mb-1">Sharpe Ratio</p>
+            <p className="text-2xl font-bold text-white">{statsData.sharpe_ratio.toFixed(2)}</p>
+            <p className="text-xs text-slate-500 mt-1">Win: ${statsData.largest_win.toFixed(2)} / Loss: ${Math.abs(statsData.largest_loss).toFixed(2)}</p>
+          </div>
+        </div>
+      )}
 
       {/* Trading Panel */}
       <div className="bg-slate-800 rounded-lg p-6 border border-slate-700 space-y-4">
@@ -298,8 +371,13 @@ export default function TradesPage() {
               </thead>
               <tbody className="divide-y divide-slate-700">
                 {trades.map((trade) => {
-                  const pnl = parseFloat(trade.realized_pl || '0');
-                  const pnlPercent = parseFloat(trade.realized_plpc || '0') * 100;
+                  const position = positionMap.get(trade.symbol);
+                  const pnl = trade.status === 'open' 
+                    ? (position?.unrealized_pl || 0)
+                    : (trade.realized_pl || 0);
+                  const pnlPercent = trade.status === 'open'
+                    ? ((position?.unrealized_plpc || 0) * 100)
+                    : ((trade.realized_plpc || 0) * 100);
                   const isPositive = pnl >= 0;
 
                   return (
@@ -318,13 +396,13 @@ export default function TradesPage() {
                         </span>
                       </td>
                       <td className="px-6 py-4 text-right text-slate-300">
-                        ${parseFloat(trade.entry_price).toFixed(2)}
+                        ${typeof trade.entry_price === 'number' ? trade.entry_price.toFixed(2) : parseFloat(trade.entry_price).toFixed(2)}
                       </td>
                       <td className="px-6 py-4 text-right text-slate-300">
-                        {trade.exit_price ? `$${parseFloat(trade.exit_price).toFixed(2)}` : '-'}
+                        {trade.exit_price ? `$${typeof trade.exit_price === 'number' ? trade.exit_price.toFixed(2) : parseFloat(trade.exit_price).toFixed(2)}` : '-'}
                       </td>
                       <td className="px-6 py-4 text-right text-white">
-                        {parseFloat(trade.qty).toFixed(0)}
+                        {typeof trade.qty === 'number' ? trade.qty.toFixed(0) : parseFloat(trade.qty).toFixed(0)}
                       </td>
                       <td className="px-6 py-4 text-left text-slate-300 text-sm">
                         {new Date(trade.entry_time).toLocaleDateString('en-US', {
@@ -380,8 +458,13 @@ export default function TradesPage() {
           {/* Mobile View - Cards */}
           <div className="md:hidden space-y-3 p-4">
             {trades.map((trade) => {
-              const pnl = parseFloat(trade.realized_pl || '0');
-              const pnlPercent = parseFloat(trade.realized_plpc || '0') * 100;
+              const position = positionMap.get(trade.symbol);
+              const pnl = trade.status === 'open' 
+                ? (position?.unrealized_pl || 0)
+                : (trade.realized_pl || 0);
+              const pnlPercent = trade.status === 'open'
+                ? ((position?.unrealized_plpc || 0) * 100)
+                : ((trade.realized_plpc || 0) * 100);
               const isPositive = pnl >= 0;
 
               return (
@@ -403,17 +486,17 @@ export default function TradesPage() {
                   <div className="space-y-2 text-sm mb-3">
                     <div className="flex justify-between">
                       <span className="text-slate-400">Entry Price:</span>
-                      <span className="text-white">${parseFloat(trade.entry_price).toFixed(2)}</span>
+                      <span className="text-white">${typeof trade.entry_price === 'number' ? trade.entry_price.toFixed(2) : parseFloat(trade.entry_price).toFixed(2)}</span>
                     </div>
                     {trade.exit_price && (
                       <div className="flex justify-between">
                         <span className="text-slate-400">Exit Price:</span>
-                        <span className="text-white">${parseFloat(trade.exit_price).toFixed(2)}</span>
+                        <span className="text-white">${typeof trade.exit_price === 'number' ? trade.exit_price.toFixed(2) : parseFloat(trade.exit_price).toFixed(2)}</span>
                       </div>
                     )}
                     <div className="flex justify-between">
                       <span className="text-slate-400">Quantity:</span>
-                      <span className="text-white font-semibold">{parseFloat(trade.qty).toFixed(0)}</span>
+                      <span className="text-white font-semibold">{typeof trade.qty === 'number' ? trade.qty.toFixed(0) : parseFloat(trade.qty).toFixed(0)}</span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-slate-400">Entry Time:</span>

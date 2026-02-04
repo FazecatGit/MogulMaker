@@ -15,8 +15,18 @@ router.get('/', async (req: Request, res: Response, next) => {
   }
 });
 
-// POST /api/trades - Execute trade (protected)
-router.post('/', authMiddleware, async (req: Request, res: Response, next) => {
+// GET /api/trades/statistics - Get trade statistics
+router.get('/statistics', async (req: Request, res: Response, next) => {
+  try {
+    const data = await apiClient.get('/api/trades/statistics');
+    res.json(data);
+  } catch (error) {
+    next(error);
+  }
+});
+
+// POST /api/trades - Execute trade
+router.post('/', async (req: Request, res: Response, next) => {
   try {
     logger.info('Executing trade', { symbol: req.body.symbol, quantity: req.body.quantity });
     const data = await apiClient.post('/api/trades', req.body);
@@ -27,8 +37,8 @@ router.post('/', authMiddleware, async (req: Request, res: Response, next) => {
   }
 });
 
-// POST /api/trades/sell-all - Sell all trades (protected)
-router.post('/sell-all', authMiddleware, async (req: Request, res: Response, next) => {
+// POST /api/trades/sell-all - Sell all trades
+router.post('/sell-all', async (req: Request, res: Response, next) => {
   try {
     logger.info('Selling all trades');
     const data = await apiClient.post('/api/trades/sell-all', req.body);

@@ -3,7 +3,7 @@ import { UnauthorizedError } from '../utils/errors';
 import { Request, Response, NextFunction } from 'express';
 
 interface Claims {
-  userId: string;
+  user_id: string;
   email: string;
   iat: number;
   exp: number;

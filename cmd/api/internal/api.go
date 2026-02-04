@@ -56,15 +56,106 @@ func (api *API) HandleGetPositions(w http.ResponseWriter, r *http.Request) {
 }
 
 func (api *API) HandleGetRiskStatus(w http.ResponseWriter, r *http.Request) {
-	var riskStatus interface{}
-	if api.RiskManager != nil {
-		riskStatus = map[string]interface{}{
-			"enabled": true,
+	if api.RiskManager == nil {
+		WriteError(w, http.StatusInternalServerError, "Risk manager not initialized")
+		return
+	}
+
+	// Get Alpaca account info
+	account, err := api.AlpacaClient.GetAccount()
+	if err != nil {
+		log.Printf("Error fetching account: %v", err)
+		WriteError(w, http.StatusInternalServerError, "Failed to fetch account data")
+		return
+	}
+
+	// Get open positions from Alpaca
+	alpacaPositions, err := api.AlpacaClient.GetPositions()
+	if err != nil {
+		log.Printf("Error fetching positions: %v", err)
+		alpacaPositions = []alpaca.Position{}
+	}
+
+	// Calculate portfolio risk metrics
+	accountBalance := decimal.NewFromFloat(account.Cash.InexactFloat64() + account.PortfolioValue.InexactFloat64()).InexactFloat64()
+	portfolioValue := account.PortfolioValue.InexactFloat64()
+	buyingPower := account.BuyingPower.InexactFloat64()
+	dayTradingBuyingPower := account.DaytradingBuyingPower.InexactFloat64()
+
+	// Calculate total unrealized P&L
+	totalUnrealizedPnL := 0.0
+	for _, pos := range alpacaPositions {
+		totalUnrealizedPnL += pos.UnrealizedPL.InexactFloat64()
+	}
+
+	// Get daily loss from risk manager
+	dailyLoss := api.RiskManager.GetDailyLossPercent()
+	isDailyLimitHit := api.RiskManager.IsDailyLossLimitHit()
+
+	// Get account balance from risk manager for portfolio risk calc
+	accountBal := api.RiskManager.GetAccountBalance()
+	if accountBal == 0 {
+		accountBal = accountBalance
+	}
+
+	portfolioRisk := (totalUnrealizedPnL / accountBalance) * 100
+	if portfolioRisk < 0 {
+		portfolioRisk = -portfolioRisk
+	}
+
+	// Determine status based on risk levels
+	status := "HEALTHY"
+	if isDailyLimitHit || portfolioRisk > 10.0 {
+		status = "CRITICAL"
+	} else if portfolioRisk > 7.0 {
+		status = "WARNING"
+	}
+
+	// Build position details
+	positionCount := len(alpacaPositions)
+	positionLimit := 5
+	if positionCount > positionLimit {
+		positionLimit = positionCount // Allow flexibility but flag alert
+	}
+
+	// Format positions for response
+	var positions []map[string]interface{}
+	for _, pos := range alpacaPositions {
+		qty, _ := pos.Qty.Float64()
+		costBasis, _ := pos.CostBasis.Float64()
+		avgFillPrice := 0.0
+		if qty > 0 {
+			avgFillPrice = costBasis / qty
 		}
-	} else {
-		riskStatus = map[string]interface{}{
-			"enabled": false,
+
+		posDetail := map[string]interface{}{
+			"symbol":          pos.Symbol,
+			"side":            pos.Side,
+			"qty":             qty,
+			"avg_fill_price":  avgFillPrice,
+			"current_price":   pos.CurrentPrice.InexactFloat64(),
+			"unrealized_pl":   pos.UnrealizedPL.InexactFloat64(),
+			"unrealized_plpc": pos.UnrealizedPLPC.InexactFloat64(),
+			"change_today":    pos.ChangeToday.InexactFloat64(),
 		}
+		positions = append(positions, posDetail)
+	}
+
+	riskStatus := map[string]interface{}{
+		"enabled":              true,
+		"account_balance":      accountBalance,
+		"portfolio_value":      portfolioValue,
+		"buying_power":         buyingPower,
+		"day_trading_bp":       dayTradingBuyingPower,
+		"daily_loss_percent":   dailyLoss,
+		"daily_loss_limit_hit": isDailyLimitHit,
+		"total_unrealized_pnl": totalUnrealizedPnL,
+		"portfolio_risk_pct":   portfolioRisk,
+		"status":               status,
+		"open_positions":       positionCount,
+		"position_limit":       positionLimit,
+		"positions":            positions,
+		"timestamp":            time.Now().Unix(),
 	}
 
 	WriteJSON(w, http.StatusOK, riskStatus)
@@ -169,10 +260,11 @@ func convertToTradeResults(dbTrades []database.GetAllTradesRow) []metrics.TradeR
 }
 
 func (api *API) HandleGetTrades(w http.ResponseWriter, r *http.Request) {
-	symbol := r.URL.Query().Get("symbol")
+	_ = r.URL.Query().Get("symbol") // Symbol filter available if needed
 	limitStr := r.URL.Query().Get("limit")
+	statusFilter := r.URL.Query().Get("status") // all, open, closed
 
-	limit := 50
+	limit := 100
 	if limitStr != "" {
 		parsedLimit, err := strconv.Atoi(limitStr)
 		if err == nil && parsedLimit > 0 {
@@ -180,76 +272,197 @@ func (api *API) HandleGetTrades(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	allTrades, err := api.Queries.GetAllTrades(r.Context())
+	// Get all orders from Alpaca (includes full trading history)
+	orders, err := api.AlpacaClient.GetOrders(alpaca.GetOrdersRequest{
+		Status:  "all", // Get all orders: open, closed, etc.
+		Limit:   int(limit * 2), // Get more to account for filtering
+		Nested:  true,
+	})
 	if err != nil {
-		log.Printf("Error fetching trades: %v", err)
-		WriteError(w, http.StatusInternalServerError, "Failed to fetch trades")
+		log.Printf("Error fetching Alpaca orders: %v", err)
+		WriteError(w, http.StatusInternalServerError, "Failed to fetch orders")
 		return
 	}
 
-	// Convert to trade results with calculated P&L
-	tradeResults := convertToTradeResults(allTrades)
+	// Group filled orders by symbol to pair buy/sell
+	filledBySymbol := make(map[string][]alpaca.Order)
+	allOrders := []alpaca.Order{}
 
-	// Filter by symbol if provided
-	var filteredResults []map[string]interface{}
-	for _, trade := range tradeResults {
-		if symbol == "" || trade.Symbol == symbol {
-			filteredResults = append(filteredResults, map[string]interface{}{
-				"id":            trade.Symbol + "_" + trade.EntryTime.Format("2006-01-02T15:04:05"),
-				"symbol":        trade.Symbol,
-				"exchange":      "NASDAQ", // Default exchange - could be enhanced
-				"entry_time":    trade.EntryTime.Format(time.RFC3339),
-				"exit_time":     trade.ExitTime.Format(time.RFC3339),
-				"entry_price":   trade.EntryPrice,
-				"exit_price":    trade.ExitPrice,
-				"qty":           trade.Quantity,
-				"side":          "buy",
-				"status":        "closed",
-				"realized_pl":   trade.PnL,
-				"realized_plpc": trade.ReturnPercent / 100,
-				"duration_ms":   trade.Duration.Milliseconds(),
-			})
+	for _, order := range orders {
+		if order.Status == "filled" || order.Status == "closed" {
+			filledBySymbol[order.Symbol] = append(filledBySymbol[order.Symbol], order)
 		}
+		allOrders = append(allOrders, order)
 	}
 
-	// Also include open positions (unfilled sells)
-	openPositions, err := api.AlpacaClient.GetPositions()
-	if err == nil {
-		for _, pos := range openPositions {
-			var entryPrice float64 = 0
-			qty, _ := pos.Qty.Float64()
-			costBasis, _ := pos.CostBasis.Float64()
-			if qty > 0 {
-				entryPrice = costBasis / qty
+	// Create trade records with P&L calculations
+	// Pair trades and calculate P&L using the monitoring package
+	tradeRecords := monitoring.PairTradesAndCalculatePnL(allOrders)
+	trades := monitoring.FormatTradeRecordsAsJSON(tradeRecords)
+
+	// Filter by status if provided
+	if statusFilter != "" && statusFilter != "all" {
+		var filtered []map[string]interface{}
+		for _, trade := range trades {
+			if tradeStatus, ok := trade["status"].(string); ok {
+				if tradeStatus == statusFilter {
+					filtered = append(filtered, trade)
+				}
 			}
-
-			filteredResults = append(filteredResults, map[string]interface{}{
-				"id":            pos.Symbol + "_open",
-				"symbol":        pos.Symbol,
-				"exchange":      "NASDAQ",
-				"entry_time":    time.Now().Add(-time.Hour).Format(time.RFC3339), // Approximate
-				"exit_time":     nil,
-				"entry_price":   entryPrice,
-				"exit_price":    nil,
-				"qty":           qty,
-				"side":          "buy",
-				"status":        "open",
-				"realized_pl":   0,
-				"realized_plpc": 0,
-				"duration_ms":   nil,
-			})
 		}
+		trades = filtered
 	}
 
-	if len(filteredResults) > limit {
-		filteredResults = filteredResults[:limit]
+	// Sort by submitted_at descending
+	sort.Slice(trades, func(i, j int) bool {
+		iTime, _ := trades[i]["submitted_at"].(string)
+		jTime, _ := trades[j]["submitted_at"].(string)
+		return iTime > jTime
+	})
+
+	// Limit results
+	if len(trades) > limit {
+		trades = trades[:limit]
 	}
 
 	response := map[string]interface{}{
-		"count":       len(filteredResults),
-		"trades":      filteredResults,
+		"count":       len(trades),
+		"trades":      trades,
 		"timestamp":   time.Now().Unix(),
 		"risk_status": map[string]interface{}{"enabled": true},
+	}
+
+	WriteJSON(w, http.StatusOK, response)
+}
+
+func (api *API) HandleTradeStatistics(w http.ResponseWriter, r *http.Request) {
+	// Get all orders from Alpaca
+	orders, err := api.AlpacaClient.GetOrders(alpaca.GetOrdersRequest{
+		Status: "all",
+		Limit:  1000, // Get more orders for better statistics
+		Nested: true,
+	})
+	if err != nil {
+		log.Printf("Error fetching Alpaca orders: %v", err)
+		WriteError(w, http.StatusInternalServerError, "Failed to fetch orders")
+		return
+	}
+
+	// Group orders by symbol and pair buy/sell to calculate P&L
+	tradesBySymbol := make(map[string][]alpaca.Order)
+	for _, order := range orders {
+		// Only use filled orders
+		if order.Status == "filled" || order.Status == "closed" {
+			tradesBySymbol[order.Symbol] = append(tradesBySymbol[order.Symbol], order)
+		}
+	}
+
+	// Calculate P&L by pairing buy/sell trades
+	var pnlResults []float64
+	var completedTrades []map[string]interface{}
+	totalPnL := 0.0
+	largestWin := 0.0
+	largestLoss := 0.0
+
+	for symbol, trades := range tradesBySymbol {
+		// Separate buys and sells
+		var buyTrades []alpaca.Order
+		var sellTrades []alpaca.Order
+
+		for _, trade := range trades {
+			if trade.Side == "buy" {
+				buyTrades = append(buyTrades, trade)
+			} else {
+				sellTrades = append(sellTrades, trade)
+			}
+		}
+
+		// Pair buys with sells
+		minPairs := len(buyTrades)
+		if len(sellTrades) < minPairs {
+			minPairs = len(sellTrades)
+		}
+
+		for i := 0; i < minPairs; i++ {
+			buyOrder := buyTrades[i]
+			sellOrder := sellTrades[i]
+
+			buyQty, _ := buyOrder.FilledQty.Float64()
+			buyPrice, _ := buyOrder.FilledAvgPrice.Float64()
+			sellQty, _ := sellOrder.FilledQty.Float64()
+			sellPrice, _ := sellOrder.FilledAvgPrice.Float64()
+
+			// Use minimum quantity to pair
+			qty := buyQty
+			if sellQty < qty {
+				qty = sellQty
+			}
+
+			pnl := (sellPrice - buyPrice) * qty
+			pnlResults = append(pnlResults, pnl)
+			totalPnL += pnl
+
+			if pnl > largestWin {
+				largestWin = pnl
+			}
+			if pnl < largestLoss {
+				largestLoss = pnl
+			}
+
+			completedTrades = append(completedTrades, map[string]interface{}{
+				"symbol": symbol,
+				"pnl":    pnl,
+			})
+		}
+	}
+
+	// Calculate metrics
+	totalFilled := len(orders)
+	winningTrades := 0
+	for _, pnl := range pnlResults {
+		if pnl > 0 {
+			winningTrades++
+		}
+	}
+	losingTrades := len(pnlResults) - winningTrades
+
+	winRate := 0.0
+	avgPnL := 0.0
+	if len(pnlResults) > 0 {
+		winRate = (float64(winningTrades) / float64(len(pnlResults))) * 100
+		avgPnL = totalPnL / float64(len(pnlResults))
+	}
+
+	// Calculate Sharpe ratio from PnL returns using metrics package
+	sharpeRatio := metrics.CalculateSharpeFromReturns(pnlResults)
+	sortinoRatio := metrics.CalculateSortinoFromReturns(pnlResults)
+
+	// Get open positions for additional context
+	openPositions, err := api.AlpacaClient.GetPositions()
+	openCount := 0
+	openPnL := 0.0
+	if err == nil {
+		openCount = len(openPositions)
+		for _, pos := range openPositions {
+			openPnL += pos.UnrealizedPL.InexactFloat64()
+		}
+	}
+
+	response := map[string]interface{}{
+		"total_trades":       totalFilled,
+		"winning_trades":     winningTrades,
+		"losing_trades":      losingTrades,
+		"win_rate":           winRate,
+		"total_pnl":          totalPnL,
+		"avg_pnl":            avgPnL,
+		"largest_win":        largestWin,
+		"largest_loss":       largestLoss,
+		"avg_trade_duration": "N/A",
+		"sharpe_ratio":       sharpeRatio,
+		"sortino_ratio":      sortinoRatio,
+		"open_positions":     openCount,
+		"open_pnl":           openPnL,
+		"timestamp":          time.Now().Unix(),
 	}
 
 	WriteJSON(w, http.StatusOK, response)
@@ -948,17 +1161,20 @@ func (api *API) HandleAnalyzeSymbol(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	currentPrice := bars[len(bars)-1].Close
+	currentPrice := bars[0].Close
 	currentRSI := rsiValues[len(rsiValues)-1]
 	currentATR := atrValues[len(atrValues)-1]
 
+	// SMA 20 - calculate from most recent 20 bars
 	sma20 := 0.0
-	for i := len(bars) - 20; i < len(bars); i++ {
-		if i >= 0 {
-			sma20 += bars[i].Close
-		}
+	barsForSMA := 20
+	if len(bars) < barsForSMA {
+		barsForSMA = len(bars)
 	}
-	sma20 /= 20.0
+	for i := 0; i < barsForSMA; i++ {
+		sma20 += bars[i].Close
+	}
+	sma20 /= float64(barsForSMA)
 
 	trend := "neutral"
 	if currentPrice > sma20*1.02 {
@@ -1004,7 +1220,7 @@ func (api *API) HandleAnalyzeSymbol(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Multi-timeframe analysis (placeholder - would require async calls)
+	// Multi-timeframe analysis (placeholder - would require async calls in typescript api)
 	var multiTimeframe map[string]interface{}
 	// Note: Full multi-timeframe analysis would require fetching 4H and 1H data separately
 	// For now, we return empty placeholder

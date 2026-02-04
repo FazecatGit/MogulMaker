@@ -1,3 +1,4 @@
+import dotenv from 'dotenv';
 import express, { Express, Request, Response } from 'express';
 import cors from 'cors';
 import watchlistRoutes from './routes/watchlist';
@@ -15,6 +16,9 @@ import executeTradeRoutes from './routes/execute-trade';
 import requestIdMiddleware from './middleware/requestId';
 import errorHandler from './middleware/errorHandler';
 import RateLimiter from './middleware/ratelimit';
+
+// Load environment variables from .env file
+dotenv.config();
 
 const app: Express = express();
 const port = process.env.PORT || 3000;

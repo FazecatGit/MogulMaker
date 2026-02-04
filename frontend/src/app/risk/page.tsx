@@ -50,52 +50,32 @@ export default function RiskPage() {
     setIsLoading(true);
     setError(null);
     try {
-      const response = await apiClient.get('/risk') as RiskData;
-      if (response) {
-        setRiskData(response);
+      const response = await apiClient.get('/risk');
+      const backendData = response?.data || response;
+      if (backendData) {
+        // Transform backend response to match RiskData interface
+        const transformedData: RiskData = {
+          metrics: {
+            dailyLoss: Math.abs(backendData.daily_loss_percent * backendData.portfolio_value / 100) || 0,
+            dailyLossLimit: backendData.account_balance * 0.05, // 5% of account
+            portfolioRisk: (backendData.portfolio_risk_pct * 100).toFixed(2) as unknown as number,
+            maxDrawdown: Math.abs(backendData.total_unrealized_pnl) || 0,
+            maxDrawdownPercent: ((backendData.total_unrealized_pnl / backendData.portfolio_value) * 100).toFixed(2) as unknown as number,
+            openPositions: backendData.open_positions || 0,
+            positionLimit: backendData.position_limit || 10,
+            averageRiskPerTrade: 0,
+            largestPosition: {
+              symbol: backendData.positions?.[0]?.symbol || 'N/A',
+              risk: Math.max(...(backendData.positions?.map((p: any) => Math.abs(p.unrealized_pl)) || [0])) || 0,
+            },
+          },
+          alerts: [],
+          lastUpdated: new Date(backendData.timestamp * 1000).toISOString(),
+        };
+        setRiskData(transformedData);
       }
     } catch (err: any) {
       setError(err.message || 'Failed to fetch risk data');
-      // Fallback mock data for demonstration
-      setRiskData({
-        metrics: {
-          dailyLoss: 1250,
-          dailyLossLimit: 5000,
-          portfolioRisk: 2.8,
-          maxDrawdown: 8500,
-          maxDrawdownPercent: 3.2,
-          openPositions: 5,
-          positionLimit: 10,
-          averageRiskPerTrade: 250,
-          largestPosition: {
-            symbol: 'TSLA',
-            risk: 800,
-          },
-        },
-        alerts: [
-          {
-            id: '1',
-            level: 'warning',
-            title: 'High Portfolio Risk',
-            description: 'Portfolio risk is at 2.8%, approaching threshold of 3%.',
-            metric: 'Portfolio Risk',
-            currentValue: 2.8,
-            threshold: 3,
-            timestamp: new Date(Date.now() - 10 * 60 * 1000).toISOString(),
-          },
-          {
-            id: '2',
-            level: 'info',
-            title: 'Daily Loss Tracking',
-            description: 'Current daily loss: $1,250 / $5,000 limit (25% used)',
-            metric: 'Daily Loss',
-            currentValue: 1250,
-            threshold: 5000,
-            timestamp: new Date(Date.now() - 30 * 60 * 1000).toISOString(),
-          },
-        ],
-        lastUpdated: new Date().toISOString(),
-      });
     } finally {
       setIsLoading(false);
     }

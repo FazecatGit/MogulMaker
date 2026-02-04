@@ -23,7 +23,7 @@ router.get('/', async (req: Request, res: Response) => {
     queryParams.append('end_date', endDate);
 
     const data = await apiClient.get(
-      `/api/backtest?${queryParams.toString()}`
+      `/backtest?${queryParams.toString()}`
     );
     res.json(data);
   } catch (error: any) {
@@ -42,7 +42,7 @@ router.get('/results', async (req: Request, res: Response) => {
       return;
     }
 
-    const data = await apiClient.get(`/api/backtest/results?id=${id}`);
+    const data = await apiClient.get(`api/backtest/results?id=${id}`);
     res.json(data);
   } catch (error: any) {
     console.error('Get results error:', error.message);

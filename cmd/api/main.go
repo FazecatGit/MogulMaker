@@ -119,6 +119,7 @@ func main() {
 	r.Get("/api/risk", apiServer.HandleGetRiskStatus)
 	r.Get("/api/stats", apiServer.HandleGetStats)
 	r.Get("/api/trades", apiServer.HandleGetTrades)
+	r.Get("/api/trades/statistics", apiServer.HandleTradeStatistics)
 	r.Post("/api/token", apiServer.HandleGenerateToken)
 
 	//Analytics & Monitoring
@@ -143,11 +144,9 @@ func main() {
 
 	// Trade Execution
 	r.Post("/api/execute-trade", apiServer.HandleExecuteTrade)
-
-	// Protected routes
-	r.With(internal.JWTAuthMiddleware(apiServer.JWTManager)).Post("/api/trades", apiServer.HandleExecuteTrade)
-	r.With(internal.JWTAuthMiddleware(apiServer.JWTManager)).Post("/api/trades/sell-all", apiServer.HandleSellAllTrades)
-	r.With(internal.JWTAuthMiddleware(apiServer.JWTManager)).Delete("/api/positions/{symbol}", apiServer.HandleClosePosition)
+	r.Post("/api/trades", apiServer.HandleExecuteTrade)
+	r.Post("/api/trades/sell-all", apiServer.HandleSellAllTrades)
+	r.Delete("/api/positions/{symbol}", apiServer.HandleClosePosition)
 
 	log.Println("Starting API server on :8080")
 	if err := http.ListenAndServe(":8080", r); err != nil {

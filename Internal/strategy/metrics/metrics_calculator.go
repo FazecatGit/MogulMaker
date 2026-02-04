@@ -129,3 +129,66 @@ func calculateStandardDeviation(values []float64) float64 {
 	variance := varianceSum / float64(len(values))
 	return math.Sqrt(variance)
 }
+
+func CalculateSharpeFromReturns(pnlReturns []float64) float64 {
+	if len(pnlReturns) == 0 {
+		return 0
+	}
+
+	// Calculate mean return
+	mean := 0.0
+	for _, r := range pnlReturns {
+		mean += r
+	}
+	mean /= float64(len(pnlReturns))
+
+	variance := 0.0
+	for _, r := range pnlReturns {
+		diff := r - mean
+		variance += diff * diff
+	}
+	variance /= float64(len(pnlReturns))
+	stdDev := math.Sqrt(variance)
+
+	if stdDev == 0 {
+		return 0
+	}
+
+	// Sharpe ratio with risk-free rate of 0.02 (2% annual, ~0.0000386 daily)
+	riskFreeRate := 0.02 / 252.0 // Daily risk-free rate
+	sharpe := (mean - riskFreeRate) / stdDev
+
+	return sharpe
+}
+
+
+func CalculateSortinoFromReturns(pnlReturns []float64) float64 {
+	if len(pnlReturns) == 0 {
+		return 0
+	}
+
+	mean := 0.0
+	for _, r := range pnlReturns {
+		mean += r
+	}
+	mean /= float64(len(pnlReturns))
+
+	downsideVariance := 0.0
+	for _, r := range pnlReturns {
+		if r < mean {
+			diff := r - mean
+			downsideVariance += diff * diff
+		}
+	}
+	downsideVariance /= float64(len(pnlReturns))
+	downsideDev := math.Sqrt(downsideVariance)
+
+	if downsideDev == 0 {
+		return 0
+	}
+
+	riskFreeRate := 0.02 / 252.0 // Daily risk-free rate
+	sortino := (mean - riskFreeRate) / downsideDev
+
+	return sortino
+}

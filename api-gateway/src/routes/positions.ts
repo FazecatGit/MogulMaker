@@ -33,8 +33,8 @@ router.get('/:symbol', async (req: Request, res: Response, next: NextFunction) =
   }
 });
 
-// DELETE /api/positions/{symbol} - Close position (protected)
-router.delete('/:symbol', authMiddleware, async (req: Request, res: Response, next) => {
+// DELETE /api/positions/{symbol} - Close position
+router.delete('/:symbol', async (req: Request, res: Response, next) => {
   try {
     const { symbol } = req.params;
 

@@ -1,12 +1,11 @@
 import { Router, Request, Response } from 'express';
 import apiClient from '../utils/apiClient';
-import authMiddleware from '../middleware/auth';
 import logger from '../utils/logger';
 
 const router = Router();
 
-// POST /api/token - Generate JWT token
-router.post('/', authMiddleware ,async (req: Request, res: Response) => {
+// POST /api/token - Generate JWT token (PUBLIC - no auth required)
+router.post('/', async (req: Request, res: Response) => {
   try {
     if (!req.body) {
       res.status(400).json({ error: 'Request body is required' });
