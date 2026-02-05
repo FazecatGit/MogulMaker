@@ -44,7 +44,7 @@ class APIClient {
   constructor() {
     this.client = axios.create({
       baseURL: 'http://localhost:8080',
-      timeout: 10000,
+      timeout: 120000, // Increased to 120s for long-running scans
       headers: {
         'Content-Type': 'application/json',
       },
@@ -109,6 +109,17 @@ class APIClient {
       return response.data;
     } catch (error) {
       this.handleError(error as AxiosError, 'POST', url);
+      throw error;
+    }
+  }
+
+  async put<T>(url: string, data?: any): Promise<T> {
+    try {
+      const response = await this.client.put<T>(url, data);
+      this.invalidateCache(url);
+      return response.data;
+    } catch (error) {
+      this.handleError(error as AxiosError, 'PUT', url);
       throw error;
     }
   }

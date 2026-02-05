@@ -45,12 +45,6 @@ func InitDatabase() error {
 	}
 	Queries = database.New(DB)
 
-	// Initialize database schema if tables don't exist
-	if err := initializeSchema(); err != nil {
-		fmt.Printf("Warning: Failed to initialize schema: %v\n", err)
-		// Don't fail - tables might already exist
-	}
-
 	fmt.Println("Database connected successfully!")
 	return nil
 }

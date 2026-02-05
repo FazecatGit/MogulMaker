@@ -50,31 +50,40 @@ export default function RiskPage() {
     setIsLoading(true);
     setError(null);
     try {
-      const response = await apiClient.get('/risk');
-      const backendData = response?.data || response;
+      // Fetch both risk metrics and alerts
+      const [riskResponse, alertsResponse] = await Promise.all([
+        apiClient.get('/risk'),
+        apiClient.get('/risk/alerts'),
+      ]);
+
+      const backendData: any = riskResponse || {};
+      const alertsData: any = alertsResponse || {};
+      
       if (backendData) {
         // Transform backend response to match RiskData interface
         const transformedData: RiskData = {
           metrics: {
-            dailyLoss: Math.abs(backendData.daily_loss_percent * backendData.portfolio_value / 100) || 0,
-            dailyLossLimit: backendData.account_balance * 0.05, // 5% of account
-            portfolioRisk: (backendData.portfolio_risk_pct * 100).toFixed(2) as unknown as number,
-            maxDrawdown: Math.abs(backendData.total_unrealized_pnl) || 0,
-            maxDrawdownPercent: ((backendData.total_unrealized_pnl / backendData.portfolio_value) * 100).toFixed(2) as unknown as number,
+            dailyLoss: Math.abs((backendData.daily_loss_percent || 0) * (backendData.portfolio_value || 0) / 100) || 0,
+            dailyLossLimit: (backendData.account_balance || 0) * 0.05, // 5% of account
+            portfolioRisk: parseFloat(((backendData.portfolio_risk_pct || 0) * 100).toFixed(2)) || 0,
+            maxDrawdown: Math.abs(backendData.total_unrealized_pnl || 0) || 0,
+            maxDrawdownPercent: parseFloat((((backendData.total_unrealized_pnl || 0) / (backendData.portfolio_value || 1)) * 100).toFixed(2)) || 0,
             openPositions: backendData.open_positions || 0,
             positionLimit: backendData.position_limit || 10,
-            averageRiskPerTrade: 0,
+            averageRiskPerTrade: backendData.positions ? 
+              (backendData.positions.reduce((sum: number, p: any) => sum + Math.abs(p.unrealized_pl || 0), 0) / backendData.positions.length) || 0 : 0,
             largestPosition: {
               symbol: backendData.positions?.[0]?.symbol || 'N/A',
-              risk: Math.max(...(backendData.positions?.map((p: any) => Math.abs(p.unrealized_pl)) || [0])) || 0,
+              risk: Math.max(...(backendData.positions?.map((p: any) => Math.abs(p.unrealized_pl || 0)) || [0])) || 0,
             },
           },
-          alerts: [],
-          lastUpdated: new Date(backendData.timestamp * 1000).toISOString(),
+          alerts: alertsData.alerts || [],
+          lastUpdated: new Date((backendData.timestamp || Date.now() / 1000) * 1000).toISOString(),
         };
         setRiskData(transformedData);
       }
     } catch (err: any) {
+      console.error('Risk data fetch error:', err);
       setError(err.message || 'Failed to fetch risk data');
     } finally {
       setIsLoading(false);

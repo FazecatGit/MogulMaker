@@ -2,7 +2,7 @@ import axios from 'axios';
 
 const apiClient = axios.create({
   baseURL: process.env.NEXT_PUBLIC_API_GATEWAY_URL || 'http://localhost:3000/api',
-  timeout: 30000, // Increased timeout to 30s for scanning
+  timeout: 120000, // Increased timeout to 120s for long-running scans
 });
 
 // Add JWT token to requests (only in browser)

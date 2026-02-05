@@ -174,7 +174,7 @@ DELETE FROM skip_backlog WHERE symbol = $1;
 
 -- name: GetScanLog :one
 -- Get the latest scan log entry for a profile
-SELECT id, profile_name, last_scan_timestamp, next_scan_due, symbols_scanned
+SELECT id, profile_name, last_scan_timestamp, next_scan_due, symbols_scanned, created_at, updated_at
 FROM scan_log
 WHERE profile_name = $1;
 
@@ -190,7 +190,7 @@ ON CONFLICT (profile_name) DO UPDATE SET
 
 -- name: GetAllScanLogs :many
 -- Get all scan log entries
-SELECT id, profile_name, last_scan_timestamp, next_scan_due, symbols_scanned
+SELECT id, profile_name, last_scan_timestamp, next_scan_due, symbols_scanned, created_at, updated_at
 FROM scan_log
 ORDER BY profile_name;
 

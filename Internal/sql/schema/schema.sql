@@ -7,6 +7,9 @@ DROP TABLE IF EXISTS positions CASCADE;
 DROP TABLE IF EXISTS signals CASCADE;
 DROP TABLE IF EXISTS historical_bars CASCADE;
 DROP TABLE IF EXISTS portfolio_history CASCADE;
+DROP TABLE IF EXISTS rsi_calculation CASCADE;
+DROP TABLE IF EXISTS atr_calculation CASCADE;
+DROP TABLE IF EXISTS scan_log CASCADE;
 
 -- Historical OHLCV data table
 CREATE TABLE historical_bars (
@@ -76,12 +79,41 @@ CREATE TABLE portfolio_history (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+-- RSI calculation cache table
+CREATE TABLE rsi_calculation (
+    symbol VARCHAR(10) NOT NULL,
+    calculation_timestamp TIMESTAMP NOT NULL,
+    rsi_value DECIMAL(5, 2) NOT NULL,
+    UNIQUE(symbol, calculation_timestamp)
+);
+
+-- ATR calculation cache table
+CREATE TABLE atr_calculation (
+    symbol VARCHAR(10) NOT NULL,
+    calculation_timestamp TIMESTAMP NOT NULL,
+    atr_value DECIMAL(10, 4) NOT NULL,
+    UNIQUE(symbol, calculation_timestamp)
+);
+
+-- Scan log table
+CREATE TABLE scan_log (
+    id SERIAL PRIMARY KEY,
+    profile_name VARCHAR(50) NOT NULL UNIQUE,
+    last_scan_timestamp TIMESTAMP NOT NULL,
+    next_scan_due TIMESTAMP NOT NULL,
+    symbols_scanned INT DEFAULT 0,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
 -- Indexes for better query performance
 CREATE INDEX idx_historical_bars_symbol_timeframe ON historical_bars(symbol, timeframe);
 CREATE INDEX idx_historical_bars_timestamp ON historical_bars(timestamp);
 CREATE INDEX idx_signals_symbol_created ON signals(symbol, created_at);
 CREATE INDEX idx_trades_symbol_created ON trades(symbol, created_at);
 CREATE INDEX idx_positions_symbol ON positions(symbol);
+CREATE INDEX idx_rsi_symbol_timestamp ON rsi_calculation(symbol, calculation_timestamp);
+CREATE INDEX idx_atr_symbol_timestamp ON atr_calculation(symbol, calculation_timestamp);
 
 -- Sample data comments
 -- You can add some test data here later if needed

@@ -26,7 +26,6 @@ func PairTradesAndCalculatePnL(allOrders []alpaca.Order) []TradeHistoryRecord {
 		tradePairID string
 	}
 
-	// Group filled orders by symbol
 	filledBySymbol := make(map[string][]alpaca.Order)
 	var allFilledOrders []alpaca.Order
 

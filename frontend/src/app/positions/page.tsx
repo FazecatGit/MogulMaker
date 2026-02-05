@@ -36,6 +36,27 @@ export default function PositionsPage() {
   };
 
   const handleBuyMore = async (symbol: string) => {
+    const existingPosition = data?.positions.find(p => p.symbol === symbol);
+    const pendingOrders = data?.pending_orders?.filter(o => o.symbol === symbol && o.side === 'buy') || [];
+    
+    const existingQty = existingPosition ? parseFloat(existingPosition.qty) : 0;
+    const pendingQty = pendingOrders.reduce((sum, order) => sum + parseFloat(order.qty), 0);
+
+    if (existingQty > 0 || pendingQty > 0) {
+      let confirmMessage = `You currently have:\n`;
+      if (existingQty > 0) {
+        confirmMessage += `• ${existingQty} shares of ${symbol} (filled)\n`;
+      }
+      if (pendingQty > 0) {
+        confirmMessage += `• ${pendingQty} shares of ${symbol} (pending)\n`;
+      }
+      confirmMessage += `\nAre you sure you want to buy more ${symbol}?`;
+      
+      if (!window.confirm(confirmMessage)) {
+        return;
+      }
+    }
+    
     const quantityStr = prompt(`How many shares of ${symbol} do you want to buy?`, '1');
     if (!quantityStr || isNaN(parseFloat(quantityStr)) || parseFloat(quantityStr) <= 0) {
       return;
@@ -119,6 +140,7 @@ export default function PositionsPage() {
   }
 
   const positions = sortedPositions;
+  const pendingOrders = data?.pending_orders || [];
 
   return (
     <div className="space-y-6">
@@ -127,8 +149,38 @@ export default function PositionsPage() {
         <h1 className="text-3xl font-bold text-white mb-2">Positions</h1>
         <p className="text-slate-400">
           {positions.length} open position{positions.length !== 1 ? 's' : ''}
+          {pendingOrders.length > 0 && ` • ${pendingOrders.length} pending order${pendingOrders.length !== 1 ? 's' : ''}`}
         </p>
       </div>
+
+      {/* Pending Orders Alert */}
+      {pendingOrders.length > 0 && (
+        <div className="bg-yellow-900/10 border-2 border-yellow-500 rounded-lg p-6 shadow-lg">
+          <div className="flex items-start gap-4">
+            <div className="bg-yellow-500 rounded-full p-2">
+              <AlertCircle className="w-6 h-6 text-slate-900 flex-shrink-0" />
+            </div>
+            <div className="flex-1">
+              <p className="text-yellow-400 font-bold text-lg mb-3">
+                Pending Orders ({pendingOrders.length})
+              </p>
+              <div className="space-y-2">
+                {pendingOrders.map((order) => (
+                  <div key={order.id} className="bg-slate-800/50 rounded px-3 py-2 border border-yellow-500/30">
+                    <span className="font-bold text-yellow-300 text-base">{order.symbol}</span>
+                    {' • '}
+                    <span className="capitalize text-white font-medium">{order.side}</span>
+                    {' • '}
+                    <span className="text-white">{parseFloat(order.qty)} shares</span>
+                    {' • '}
+                    <span className="text-yellow-400 font-semibold uppercase text-xs">{order.status}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Controls */}
       <div className="bg-slate-800 rounded-lg p-4 border border-slate-700 space-y-4">

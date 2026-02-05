@@ -338,35 +338,29 @@ func (q *Queries) GetAllOpenTrades(ctx context.Context) ([]GetAllOpenTradesRow, 
 }
 
 const getAllScanLogs = `-- name: GetAllScanLogs :many
-SELECT id, profile_name, last_scan_timestamp, next_scan_due, symbols_scanned
+SELECT id, profile_name, last_scan_timestamp, next_scan_due, symbols_scanned, created_at, updated_at
 FROM scan_log
 ORDER BY profile_name
 `
 
-type GetAllScanLogsRow struct {
-	ID                int32         `json:"id"`
-	ProfileName       string        `json:"profile_name"`
-	LastScanTimestamp time.Time     `json:"last_scan_timestamp"`
-	NextScanDue       time.Time     `json:"next_scan_due"`
-	SymbolsScanned    sql.NullInt32 `json:"symbols_scanned"`
-}
-
 // Get all scan log entries
-func (q *Queries) GetAllScanLogs(ctx context.Context) ([]GetAllScanLogsRow, error) {
+func (q *Queries) GetAllScanLogs(ctx context.Context) ([]ScanLog, error) {
 	rows, err := q.db.QueryContext(ctx, getAllScanLogs)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []GetAllScanLogsRow
+	var items []ScanLog
 	for rows.Next() {
-		var i GetAllScanLogsRow
+		var i ScanLog
 		if err := rows.Scan(
 			&i.ID,
 			&i.ProfileName,
 			&i.LastScanTimestamp,
 			&i.NextScanDue,
 			&i.SymbolsScanned,
+			&i.CreatedAt,
+			&i.UpdatedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -781,30 +775,24 @@ func (q *Queries) GetRecheckableSymbols(ctx context.Context) ([]GetRecheckableSy
 
 const getScanLog = `-- name: GetScanLog :one
 
-SELECT id, profile_name, last_scan_timestamp, next_scan_due, symbols_scanned
+SELECT id, profile_name, last_scan_timestamp, next_scan_due, symbols_scanned, created_at, updated_at
 FROM scan_log
 WHERE profile_name = $1
 `
 
-type GetScanLogRow struct {
-	ID                int32         `json:"id"`
-	ProfileName       string        `json:"profile_name"`
-	LastScanTimestamp time.Time     `json:"last_scan_timestamp"`
-	NextScanDue       time.Time     `json:"next_scan_due"`
-	SymbolsScanned    sql.NullInt32 `json:"symbols_scanned"`
-}
-
 // Scan Log Queries
 // Get the latest scan log entry for a profile
-func (q *Queries) GetScanLog(ctx context.Context, profileName string) (GetScanLogRow, error) {
+func (q *Queries) GetScanLog(ctx context.Context, profileName string) (ScanLog, error) {
 	row := q.db.QueryRowContext(ctx, getScanLog, profileName)
-	var i GetScanLogRow
+	var i ScanLog
 	err := row.Scan(
 		&i.ID,
 		&i.ProfileName,
 		&i.LastScanTimestamp,
 		&i.NextScanDue,
 		&i.SymbolsScanned,
+		&i.CreatedAt,
+		&i.UpdatedAt,
 	)
 	return i, err
 }

@@ -338,13 +338,13 @@ func (pm *PositionManager) MonitorPositions(ctx context.Context, checkInterval t
 			// Check stop losses
 			stopLossHits := pm.CheckStopLosses()
 			for _, pos := range stopLossHits {
-				log.Printf("🛑 STOP LOSS HIT: %s @ $%.2f - Go to menu option 8 to close\n", pos.Symbol, pos.CurrentPrice)
+				log.Printf("STOP LOSS HIT: %s @ $%.2f - Go to menu option 8 to close\n", pos.Symbol, pos.CurrentPrice)
 			}
 
 			// Check take profits
 			takeProfitHits := pm.CheckTakeProfits()
 			for _, pos := range takeProfitHits {
-				log.Printf("🎯 TAKE PROFIT HIT: %s @ $%.2f - Go to menu option 8 to close\n", pos.Symbol, pos.CurrentPrice)
+				log.Printf("TAKE PROFIT HIT: %s @ $%.2f - Go to menu option 8 to close\n", pos.Symbol, pos.CurrentPrice)
 			}
 
 			// Check safe bails
@@ -368,29 +368,29 @@ func (pm *PositionManager) CheckMenuAlerts() {
 	// Check stop losses
 	stopLossHits := pm.CheckStopLosses()
 	for _, pos := range stopLossHits {
-		fmt.Printf("🛑 STOP LOSS HIT: %s @ $%.2f\n", pos.Symbol, pos.CurrentPrice)
+		fmt.Printf("STOP LOSS HIT: %s @ $%.2f\n", pos.Symbol, pos.CurrentPrice)
 		hasAlerts = true
 	}
 
 	// Check take profits
 	takeProfitHits := pm.CheckTakeProfits()
 	for _, pos := range takeProfitHits {
-		fmt.Printf("🎯 TAKE PROFIT HIT: %s @ $%.2f\n", pos.Symbol, pos.CurrentPrice)
+		fmt.Printf("TAKE PROFIT HIT: %s @ $%.2f\n", pos.Symbol, pos.CurrentPrice)
 		hasAlerts = true
 	}
 
 	// Check safe bails
 	safeBails := pm.CheckSafeBails()
 	for _, pos := range safeBails {
-		fmt.Printf("💰 SAFE BAIL READY: %s @ $%.2f\n", pos.Symbol, pos.CurrentPrice)
+		fmt.Printf("SAFE BAIL READY: %s @ $%.2f\n", pos.Symbol, pos.CurrentPrice)
 		hasAlerts = true
 	}
 
 	if hasAlerts {
-		fmt.Println("\n👉 Select menu option 8 to close/sell positions")
+		fmt.Println("\nSelect menu option 8 to close/sell positions")
 		fmt.Println(separator)
 	} else {
-		fmt.Println("✅ No alerts - all positions are normal")
+		fmt.Println("No alerts - all positions are normal")
 		fmt.Println(separator)
 	}
 }
@@ -472,7 +472,7 @@ func (pm *PositionManager) SyncFromAlpaca(ctx context.Context) error {
 			}
 
 			pm.positions[alpacaPos.AssetID] = position
-			log.Printf("📡 Synced position from Alpaca: %s x%d @ $%.2f\n", position.Symbol, position.Quantity, position.EntryPrice)
+			log.Printf("Synced position from Alpaca: %s x%d @ $%.2f\n", position.Symbol, position.Quantity, position.EntryPrice)
 		}
 	}
 

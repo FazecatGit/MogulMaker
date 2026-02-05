@@ -2,6 +2,8 @@ package config
 
 import (
 	"os"
+	"path/filepath"
+	"runtime"
 
 	"gopkg.in/yaml.v3"
 )
@@ -76,7 +78,42 @@ type SignalWeights struct {
 }
 
 func LoadConfig() (*Config, error) {
-	data, err := os.ReadFile("Internal/utils/config/config.yaml")
+	// Resolve path relative to this file first
+	_, filePath, _, ok := runtime.Caller(0)
+	var basePath string
+	if ok {
+		basePath = filepath.Dir(filePath)
+	}
+
+	// Get current working directory as fallback
+	cwd, err := os.Getwd()
+	if err != nil {
+		return nil, err
+	}
+
+	// Try multiple paths to find config.yaml
+	possiblePaths := []string{}
+	if basePath != "" {
+		possiblePaths = append(possiblePaths, filepath.Join(basePath, "config.yaml"))
+	}
+	possiblePaths = append(possiblePaths,
+		filepath.Join(cwd, "Internal", "utils", "config", "config.yaml"),
+		"Internal/utils/config/config.yaml",
+		"config.yaml",
+		filepath.Join("Internal", "utils", "config", "config.yaml"),
+	)
+
+	var data []byte
+	var foundPath string
+
+	for _, path := range possiblePaths {
+		data, err = os.ReadFile(path)
+		if err == nil {
+			foundPath = path
+			break
+		}
+	}
+
 	if err != nil {
 		return nil, err
 	}
@@ -86,6 +123,12 @@ func LoadConfig() (*Config, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	// Log which path was used for debugging
+	if foundPath != "" {
+		// Optional: log.Printf("Config loaded from: %s", foundPath)
+	}
+
 	return &cfg, nil
 }
 

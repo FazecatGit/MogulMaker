@@ -61,12 +61,20 @@ func CalculateInterestScore(input types.ScoringInput, weights config.SignalWeigh
 	// News sentiment score (0-10, default 5.0 = neutral)
 	newsScore := input.NewsSentimentScore
 
-	finalScore := (rsiScore * weights.RSIWeight) +
+	// Calculate total weight to normalize
+	totalWeight := weights.RSIWeight + weights.ATRWeight + weights.WhaleActivityWeight +
+		0.15 + weights.VolumeWeight + weights.NewsSentimentWeight
+
+	// Calculate weighted sum and normalize to 0-10 scale
+	weightedSum := (rsiScore * weights.RSIWeight) +
 		(atrScore * weights.ATRWeight) +
 		(whaleScore * weights.WhaleActivityWeight) +
 		(vwapScore * 0.15) +
 		(volumeScore * weights.VolumeWeight) +
 		(newsScore * weights.NewsSentimentWeight)
+
+	// Normalize: divide by total weight to get average, then scale to 0-10
+	finalScore := (weightedSum / totalWeight)
 
 	if finalScore > 10.0 {
 		finalScore = 10.0

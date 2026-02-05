@@ -14,6 +14,18 @@ interface Position {
   [key: string]: any;
 }
 
+interface PendingOrder {
+  id: string;
+  symbol: string;
+  side: 'buy' | 'sell';
+  qty: string;
+  filled_qty: string;
+  type: string;
+  status: string;
+  submitted_at: string;
+  filled_avg_price: string | null;
+}
+
 export default function TradesPage() {
   const { data, isLoading, error, isError } = useTrades();
   const { data: statsData, isLoading: statsLoading } = useTradeStatistics();
@@ -25,23 +37,33 @@ export default function TradesPage() {
   const [tradingLoading, setTradingLoading] = useState(false);
   const [tradingMessage, setTradingMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [positions, setPositions] = useState<Position[]>([]);
+  const [pendingOrders, setPendingOrders] = useState<PendingOrder[]>([]);
 
-  // Fetch positions for unrealized P&L
+  // Fetch positions for unrealized P&L and pending orders
   useEffect(() => {
-    const fetchPositions = async () => {
+    const fetchPositionsAndOrders = async () => {
       try {
-        const response = await apiClient.get('/risk');
-        const backendData = response?.data || response;
-        if (backendData?.positions) {
-          setPositions(backendData.positions);
+        const [riskResponse, positionsResponse] = await Promise.all([
+          apiClient.get('/risk'),
+          apiClient.get('/positions'),
+        ]);
+        
+        const riskData = riskResponse?.data || riskResponse;
+        if (riskData?.positions) {
+          setPositions(riskData.positions);
+        }
+        
+        const posData = positionsResponse?.data || positionsResponse;
+        if (posData?.pending_orders) {
+          setPendingOrders(posData.pending_orders);
         }
       } catch (err) {
         console.error('Failed to fetch positions:', err);
       }
     };
 
-    fetchPositions();
-    const interval = setInterval(fetchPositions, 30000); // Refresh every 30s
+    fetchPositionsAndOrders();
+    const interval = setInterval(fetchPositionsAndOrders, 30000); // Refresh every 30s
     return () => clearInterval(interval);
   }, []);
 
@@ -144,15 +166,41 @@ export default function TradesPage() {
       setTradingMessage({ type: 'error', text: 'Please enter a symbol' });
       return;
     }
+    
+    const symbol = tradeSymbol.toUpperCase();
+    
+    // Check if there are existing positions or pending orders for this symbol
+    const existingPosition = positions.find(p => p.symbol === symbol);
+    const symbolPendingOrders = pendingOrders.filter(o => o.symbol === symbol && o.side === 'buy') || [];
+    
+    const existingQty = existingPosition ? parseFloat(existingPosition.qty?.toString() || '0') : 0;
+    const pendingQty = symbolPendingOrders.reduce((sum, order) => sum + parseFloat(order.qty), 0);
+    
+    // Show confirmation if there are existing shares or pending orders
+    if (existingQty > 0 || pendingQty > 0) {
+      let confirmMessage = `You currently have:\n`;
+      if (existingQty > 0) {
+        confirmMessage += `• ${existingQty} shares of ${symbol} (filled)\n`;
+      }
+      if (pendingQty > 0) {
+        confirmMessage += `• ${pendingQty} shares of ${symbol} (pending)\n`;
+      }
+      confirmMessage += `\nAre you sure you want to buy ${tradeQuantity} more shares of ${symbol}?`;
+      
+      if (!window.confirm(confirmMessage)) {
+        return;
+      }
+    }
+    
     setTradingLoading(true);
     setTradingMessage(null);
     try {
       await apiClient.post('/execute-trade', {
-        symbol: tradeSymbol.toUpperCase(),
+        symbol: symbol,
         side: 'buy',
         quantity: tradeQuantity,
       });
-      setTradingMessage({ type: 'success', text: `Long trade executed for ${tradeSymbol.toUpperCase()}` });
+      setTradingMessage({ type: 'success', text: `Long trade executed for ${symbol}` });
       setTradeSymbol('');
       setTradeQuantity(1);
     } catch (err) {
@@ -192,8 +240,38 @@ export default function TradesPage() {
         <h1 className="text-3xl font-bold text-white mb-2">Trades</h1>
         <p className="text-slate-400">
           {trades.length} trade{trades.length !== 1 ? 's' : ''} • {openTrades} open • {closedTrades} closed
+          {pendingOrders.length > 0 && ` • ${pendingOrders.length} pending order${pendingOrders.length !== 1 ? 's' : ''}`}
         </p>
       </div>
+
+      {/* Pending Orders Alert */}
+      {pendingOrders.length > 0 && (
+        <div className="bg-yellow-500/20 border-2 border-yellow-500 rounded-lg p-6 shadow-lg">
+          <div className="flex items-start gap-4">
+            <div className="bg-yellow-500 rounded-full p-2">
+              <AlertCircle className="w-6 h-6 text-slate-900 flex-shrink-0" />
+            </div>
+            <div className="flex-1">
+              <p className="text-yellow-400 font-bold text-lg mb-3">
+                Pending Orders ({pendingOrders.length})
+              </p>
+              <div className="space-y-2">
+                {pendingOrders.map((order) => (
+                  <div key={order.id} className="bg-slate-800/50 rounded px-3 py-2 border border-yellow-500/30">
+                    <span className="font-bold text-yellow-300 text-base">{order.symbol}</span>
+                    {' • '}
+                    <span className="capitalize text-white font-medium">{order.side}</span>
+                    {' • '}
+                    <span className="text-white">{parseFloat(order.qty)} shares</span>
+                    {' • '}
+                    <span className="text-yellow-400 font-semibold uppercase text-xs">{order.status}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Trade Statistics */}
       {statsData && (

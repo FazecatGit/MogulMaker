@@ -142,6 +142,7 @@ func main() {
 	r.Get("/api/watchlist", apiServer.HandleGetWatchlist)
 	r.Post("/api/watchlist", apiServer.HandleAddToWatchlist)
 	r.Delete("/api/watchlist", apiServer.HandleRemoveFromWatchlist)
+	r.Put("/api/watchlist/refresh-scores", apiServer.HandleRefreshWatchlistScores)
 	r.Get("/api/watchlist/analyze", apiServer.HandleAnalyzeSymbol)
 	r.Get("/api/scout", apiServer.HandleScoutStocks)
 

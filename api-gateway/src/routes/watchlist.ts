@@ -25,6 +25,32 @@ router.get('/', async (req: Request, res: Response) => {
   }
 });
 
+// PUT /api/watchlist/refresh-scores - Recalculate all watchlist scores (must be before other routes)
+router.put('/refresh-scores', async (req: Request, res: Response) => {
+  try {
+    logger.info('Refreshing all watchlist scores');
+    const response = await apiClient.put(`/api/watchlist/refresh-scores`);
+    apiClient.invalidateCache('/api/watchlist');
+    logger.info('Watchlist scores refreshed', { response });
+    res.json(response);
+  } catch (error: any) {
+    const status = error.response?.status || 500;
+    const errorData = error.response?.data || {};
+    const errorMessage = errorData?.error || errorData?.message || error.message || 'Failed to refresh scores';
+    
+    logger.error('Refresh scores error', {
+      message: error.message,
+      status: status,
+      data: errorData,
+    });
+    
+    res.status(status).json({
+      error: errorMessage,
+      details: errorData?.details || error.message,
+    });
+  }
+});
+
 // POST /api/watchlist - Add symbol to watchlist
 router.post('/', async (req: Request, res: Response) => {
   try {

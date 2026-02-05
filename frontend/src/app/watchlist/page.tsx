@@ -162,46 +162,17 @@ export default function WatchlistPage() {
     setIsScanning(true);
     setError(null);
     try {
-      const stocks = getSortedSymbols();
-      const updates: { [key: string]: number } = {};
-
-      for (const stock of stocks) {
-        try {
-          const response = await apiClient.get(`/watchlist/analyze?symbol=${stock.symbol}`);
-          // Use some logic to calculate score from the analysis
-          updates[stock.symbol] = calculateScoreFromAnalysis(response);
-        } catch (err) {
-          console.error(`Failed to scan ${stock.symbol}:`, err);
-        }
-      }
-
-      // Update local state with new scores
-      if (Object.keys(updates).length > 0) {
-        setWatchlistData(prev => ({
-          ...prev,
-          watchlist: prev.watchlist.map(item => ({
-            ...item,
-            score: updates[item.symbol] ?? item.score
-          }))
-        }));
-      }
-
-      setError(null);
+      console.log('[Watchlist] Scanning and updating all scores...');
+      const response = await apiClient.put('/watchlist/refresh-scores');
+      console.log('[Watchlist] Scores updated:', response);
+      // Refetch watchlist to show updated scores
+      await fetchWatchlist();
     } catch (err: any) {
-      setError(err.message || 'Failed to scan all stocks');
+      console.error('[Watchlist] Scan error:', err);
+      setError(err.message || 'Failed to scan and update scores');
     } finally {
       setIsScanning(false);
     }
-  };
-
-  const calculateScoreFromAnalysis = (analysis: any): number => {
-    // Simple scoring logic based on RSI and trend
-    let score = 5; // base score
-    if (analysis.rsi < 35) score += 2; // oversold is good
-    if (analysis.rsi > 75) score -= 1; // overbought is bad
-    if (analysis.trend === 'bullish') score += 2;
-    if (analysis.trend === 'bearish') score -= 2;
-    return Math.min(10, Math.max(0, score));
   };
 
   const getSortedSymbols = () => {
@@ -472,8 +443,8 @@ export default function WatchlistPage() {
 
                     {/* Score */}
                     <td className="px-4 py-4 text-center">
-                      <span className={`inline-block px-3 py-1 rounded-lg font-bold text-sm border ${getScoreBadgeColor(item.score / 100)}`}>
-                        {(item.score / 100).toFixed(1)}
+                      <span className={`inline-block px-3 py-1 rounded-lg font-bold text-sm border ${getScoreBadgeColor(item.score)}`}>
+                        {item.score.toFixed(1)}
                       </span>
                     </td>
 
@@ -720,7 +691,7 @@ export default function WatchlistPage() {
             <p className="text-2xl font-bold text-white">
               {watchlistData.count > 0 ? (
                 (
-                  getSortedSymbols().reduce((sum, item) => sum + (item.score / 100), 0) /
+                  getSortedSymbols().reduce((sum, item) => sum + item.score, 0) /
                   getSortedSymbols().length
                 ).toFixed(1)
               ) : (

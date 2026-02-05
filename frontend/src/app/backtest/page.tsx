@@ -5,16 +5,23 @@ import { Calendar, Play, RotateCcw, TrendingUp, BarChart3, AlertCircle } from 'l
 import apiClient from '@/lib/apiClient';
 
 interface BacktestResult {
+  backtest_id: string;
   symbol: string;
+  status: string;
   start_date: string;
   end_date: string;
-  total_return: number;
-  trades_count: number;
-  win_rate: number;
-  max_drawdown: number;
+  initial_capital: number;
+  final_balance: number;
+  total_return_pct: number;
   sharpe_ratio: number;
-  starting_balance: number;
-  ending_balance: number;
+  sortino_ratio: number;
+  win_rate: number;
+  total_trades: number;
+  winning_trades: number;
+  losing_trades: number;
+  largest_win: number;
+  largest_loss: number;
+  created_at: number;
 }
 
 export default function BacktestPage() {
@@ -44,11 +51,14 @@ export default function BacktestPage() {
         symbol: symbol.toUpperCase(),
         start_date: startDate,
         end_date: endDate,
+        capital: '100000', // Default capital
       });
 
-      const data = await apiClient.get(`/backtest?${params.toString()}`);
-      setResults(data.data as BacktestResult);
+      const data = await apiClient.get(`/backtest?${params.toString()}`) as BacktestResult;
+      console.log('Backtest result:', data);
+      setResults(data);
     } catch (err: any) {
+      console.error('Backtest error:', err);
       setError(err.message || 'Failed to run backtest. Please check your inputs and try again.');
     } finally {
       setIsLoading(false);
@@ -189,30 +199,30 @@ export default function BacktestPage() {
                   <div className="bg-slate-700/50 rounded-lg p-4 border border-slate-600">
                     <p className="text-slate-400 text-xs mb-1">Total Return</p>
                     <p className={`text-2xl font-bold ${
-                      results.total_return >= 0 ? 'text-green-400' : 'text-red-400'
+                      results.total_return_pct >= 0 ? 'text-green-400' : 'text-red-400'
                     }`}>
-                      {formatPercent(results.total_return)}
+                      {results.total_return_pct.toFixed(2)}%
                     </p>
                   </div>
 
                   <div className="bg-slate-700/50 rounded-lg p-4 border border-slate-600">
                     <p className="text-slate-400 text-xs mb-1">Win Rate</p>
                     <p className="text-2xl font-bold text-blue-400">
-                      {formatPercent(results.win_rate)}
+                      {results.win_rate.toFixed(2)}%
                     </p>
                   </div>
 
                   <div className="bg-slate-700/50 rounded-lg p-4 border border-slate-600">
-                    <p className="text-slate-400 text-xs mb-1">Trades</p>
+                    <p className="text-slate-400 text-xs mb-1">Total Trades</p>
                     <p className="text-2xl font-bold text-white">
-                      {results.trades_count}
+                      {results.total_trades}
                     </p>
                   </div>
 
                   <div className="bg-slate-700/50 rounded-lg p-4 border border-slate-600">
-                    <p className="text-slate-400 text-xs mb-1">Max Drawdown</p>
+                    <p className="text-slate-400 text-xs mb-1">Sharpe Ratio</p>
                     <p className="text-2xl font-bold text-orange-400">
-                      {formatPercent(results.max_drawdown)}
+                      {results.sharpe_ratio.toFixed(2)}
                     </p>
                   </div>
                 </div>
@@ -228,17 +238,21 @@ export default function BacktestPage() {
                   <div className="space-y-2 text-sm">
                     <div className="flex justify-between">
                       <span className="text-slate-400">Starting Balance:</span>
-                      <span className="text-white font-semibold">{formatCurrency(results.starting_balance)}</span>
+                      <span className="text-white font-semibold">{formatCurrency(results.initial_capital)}</span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-slate-400">Ending Balance:</span>
-                      <span className={`font-semibold ${results.ending_balance >= results.starting_balance ? 'text-green-400' : 'text-red-400'}`}>
-                        {formatCurrency(results.ending_balance)}
+                      <span className={`font-semibold ${results.final_balance >= results.initial_capital ? 'text-green-400' : 'text-red-400'}`}>
+                        {formatCurrency(results.final_balance)}
                       </span>
                     </div>
                     <div className="flex justify-between pt-2 border-t border-slate-700">
                       <span className="text-slate-400">Sharpe Ratio:</span>
                       <span className="text-white font-semibold">{results.sharpe_ratio.toFixed(2)}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-slate-400">Sortino Ratio:</span>
+                      <span className="text-white font-semibold">{results.sortino_ratio.toFixed(2)}</span>
                     </div>
                   </div>
                 </div>
@@ -251,17 +265,27 @@ export default function BacktestPage() {
                   <div className="space-y-2 text-sm">
                     <div className="flex justify-between">
                       <span className="text-slate-400">Total Trades:</span>
-                      <span className="text-white font-semibold">{results.trades_count}</span>
+                      <span className="text-white font-semibold">{results.total_trades}</span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-slate-400">Winning Trades:</span>
                       <span className="text-green-400 font-semibold">
-                        {Math.round(results.trades_count * results.win_rate)}
+                        {results.winning_trades}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-slate-400">Losing Trades:</span>
+                      <span className="text-red-400 font-semibold">
+                        {results.losing_trades}
                       </span>
                     </div>
                     <div className="flex justify-between pt-2 border-t border-slate-700">
-                      <span className="text-slate-400">Max Drawdown:</span>
-                      <span className="text-orange-400 font-semibold">{formatPercent(results.max_drawdown)}</span>
+                      <span className="text-slate-400">Largest Win:</span>
+                      <span className="text-green-400 font-semibold">{formatCurrency(results.largest_win)}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-slate-400">Largest Loss:</span>
+                      <span className="text-red-400 font-semibold">{formatCurrency(Math.abs(results.largest_loss))}</span>
                     </div>
                   </div>
                 </div>

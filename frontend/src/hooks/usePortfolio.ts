@@ -42,38 +42,34 @@ export function usePortfolio() {
     queryFn: async () => {
       // Fetch portfolio summary, risk adjustments (for account balance), and trades
       const summaryResponse = await apiClient.get('/portfolio-summary');
-      const riskResponse = await apiClient.get('/risk-adjustments');
-      const tradesResponse = await apiClient.get('/trades');
+      const riskResponse = await apiClient.get('/risk/adjustments');
+      const tradesResponse = await apiClient.get('/trades/statistics');
 
       // Extract account balance (total equity) from risk adjustments
-      const risk = riskResponse?.data || riskResponse;
+      const risk: any = riskResponse || {};
       const accountBalance = parseFloat(risk?.account_balance || 0);
 
       // Extract position data from portfolio summary
-      const summary = summaryResponse?.data || summaryResponse;
+      const summary: any = summaryResponse || {};
       const totalPnL = parseFloat(summary?.total_gain || 0);
       const openPositions = summary?.total_positions || 0;
 
-      const trades = Array.isArray(tradesResponse?.data) 
-        ? tradesResponse.data 
-        : Array.isArray(tradesResponse) 
-        ? tradesResponse 
-        : tradesResponse?.data || [];
+      const stats: any = tradesResponse || {};
 
       console.log('Account Balance:', accountBalance);
       console.log('Portfolio Summary:', summary);
-      console.log('Trades from API:', trades);
+      console.log('Trade Statistics:', stats);
 
-      const winningTrades = trades.filter((t: any) => t.pnl > 0).length;
-      const winRate = trades.length > 0 ? (winningTrades / trades.length) * 100 : 0;
+      const winRate = stats.win_rate || 0;
+      const totalTrades = stats.total_trades || 0;
 
       console.log('Calculated portfolioValue:', accountBalance, 'totalPnL:', totalPnL, 'winRate:', winRate);
 
       return {
         totalPnL,
         portfolioValue: accountBalance, // Use total account equity, not just positions
-        winRate,
-        totalTrades: trades.length,
+        winRate: winRate * 100, // Convert to percentage
+        totalTrades,
         openPositions,
         dailyPnLPercent: accountBalance > 0 ? (totalPnL / accountBalance) * 100 : 0,
       };

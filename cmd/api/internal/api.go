@@ -21,7 +21,10 @@ import (
 	"github.com/fazecat/mogulmaker/Internal/strategy/indicators"
 	"github.com/fazecat/mogulmaker/Internal/strategy/metrics"
 	"github.com/fazecat/mogulmaker/Internal/strategy/position"
+	"github.com/fazecat/mogulmaker/Internal/utils/analyzer"
+	"github.com/fazecat/mogulmaker/Internal/utils/config"
 	"github.com/fazecat/mogulmaker/Internal/utils/scanner"
+	"github.com/fazecat/mogulmaker/Internal/utils/scoring"
 	"github.com/shopspring/decimal"
 )
 
@@ -44,10 +47,23 @@ func (api *API) HandleGetPositions(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	pendingOrders, err := api.AlpacaClient.GetOrders(alpaca.GetOrdersRequest{
+		Status: "open",
+		Limit:  100,
+		Nested: true,
+	})
+	if err != nil {
+		log.Printf("Warning: Could not fetch pending orders: %v", err)
+		pendingOrders = []alpaca.Order{}
+	} else {
+		log.Printf("Found %d pending orders", len(pendingOrders))
+	}
+
 	response := map[string]interface{}{
-		"count":     len(alpacaPositions),
-		"positions": alpacaPositions,
-		"timestamp": time.Now().Unix(),
+		"count":          len(alpacaPositions),
+		"positions":      alpacaPositions,
+		"pending_orders": pendingOrders,
+		"timestamp":      time.Now().Unix(),
 		"risk_status": map[string]interface{}{
 			"enabled": api.RiskManager != nil,
 		},
@@ -274,9 +290,9 @@ func (api *API) HandleGetTrades(w http.ResponseWriter, r *http.Request) {
 
 	// Get all orders from Alpaca (includes full trading history)
 	orders, err := api.AlpacaClient.GetOrders(alpaca.GetOrdersRequest{
-		Status:  "all", // Get all orders: open, closed, etc.
-		Limit:   int(limit * 2), // Get more to account for filtering
-		Nested:  true,
+		Status: "all",          // Get all orders: open, closed, etc.
+		Limit:  int(limit * 2), // Get more to account for filtering
+		Nested: true,
 	})
 	if err != nil {
 		log.Printf("Error fetching Alpaca orders: %v", err)
@@ -803,13 +819,15 @@ func (api *API) HandleBacktest(w http.ResponseWriter, r *http.Request) {
 		capital = api.RiskManager.GetAccountBalance()
 	}
 
-	// Fetch historical bars for the symbol
-	historicalBars, err := datafeed.GetAlpacaBars(symbol, "1Day", 100, "")
+	// Fetch historical bars for the symbol using the date range
+	historicalBars, err := datafeed.GetAlpacaBars(symbol, "1Day", 10000, startDate)
 	if err != nil || len(historicalBars) == 0 {
 		log.Printf("Error fetching historical bars: %v", err)
 		WriteError(w, http.StatusInternalServerError, "Failed to fetch historical data for backtest")
 		return
 	}
+
+	log.Printf("Fetched %d bars for backtest from %s to %s", len(historicalBars), startDate, endDate)
 
 	// Run backtest with TradeResult from metrics.RunBacktest
 	trades, err := metrics.RunBacktest(symbol, historicalBars, capital)
@@ -1037,11 +1055,37 @@ func (api *API) HandleAddToWatchlist(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Add to watchlist in database
+	// Calculate actual score using metrics
+	calculatedScore := req.Score // Default to provided score
+
+	// Fetch bars and calculate real metrics
+	bars, err := datafeed.GetAlpacaBars(req.Symbol, "1Day", 100, "")
+	if err == nil && len(bars) > 0 {
+		// Load config for weights
+		cfg, cfgErr := config.LoadConfig()
+		if cfgErr == nil {
+			// Get the balanced profile weights (or default profile)
+			weights := cfg.Profiles["balanced"].SignalWeights
+
+			// Calculate metrics
+			candidate, metricsErr := analyzer.CalculateCandidateMetrics(r.Context(), req.Symbol, bars, cfg, weights)
+			if metricsErr == nil && candidate != nil {
+				calculatedScore = candidate.Score
+				log.Printf("Calculated score for %s: %.2f", req.Symbol, calculatedScore)
+			} else {
+				log.Printf("Warning: Could not calculate metrics for %s: %v", req.Symbol, metricsErr)
+			}
+		} else {
+			log.Printf("Warning: Could not load config: %v", cfgErr)
+		}
+	} else {
+		log.Printf("Warning: Could not fetch bars for %s: %v", req.Symbol, err)
+	}
+
 	params := database.AddToWatchlistParams{
 		Symbol:    req.Symbol,
 		AssetType: "stock",
-		Score:     float32(req.Score),
+		Score:     float32(calculatedScore),
 		Reason: sql.NullString{
 			String: req.Reason,
 			Valid:  req.Reason != "",
@@ -1073,7 +1117,7 @@ func (api *API) HandleAddToWatchlist(w http.ResponseWriter, r *http.Request) {
 		"success":      true,
 		"watchlist_id": watchlistID,
 		"symbol":       req.Symbol,
-		"score":        req.Score,
+		"score":        calculatedScore,
 		"message":      "Symbol added to watchlist",
 	}
 
@@ -1114,6 +1158,140 @@ func (api *API) HandleRemoveFromWatchlist(w http.ResponseWriter, r *http.Request
 		"success": true,
 		"symbol":  symbol,
 		"message": "Symbol removed from watchlist",
+	}
+
+	WriteJSON(w, http.StatusOK, response)
+}
+
+func (api *API) HandleRefreshWatchlistScores(w http.ResponseWriter, r *http.Request) {
+	// Get all watchlist items
+	watchlist, err := api.Queries.GetWatchlist(r.Context())
+	if err != nil {
+		log.Printf("Error fetching watchlist: %v", err)
+		WriteError(w, http.StatusInternalServerError, "Failed to fetch watchlist")
+		return
+	}
+
+	// Load config for weights
+	cfg, err := config.LoadConfig()
+	if err != nil {
+		log.Printf("Error loading config: %v", err)
+		WriteError(w, http.StatusInternalServerError, "Failed to load config")
+		return
+	}
+
+	weights := cfg.Profiles["balanced"].SignalWeights
+
+	updated := 0
+	failed := 0
+	results := make([]map[string]interface{}, 0)
+
+	// Recalculate score for each symbol using the full scoring logic
+	for _, item := range watchlist {
+		symbol := item.Symbol
+
+		// Fetch bars
+		bars, err := datafeed.GetAlpacaBars(symbol, "1Day", 100, "")
+		if err != nil || len(bars) == 0 {
+			log.Printf("Failed to fetch bars for %s: %v", symbol, err)
+			failed++
+			results = append(results, map[string]interface{}{
+				"symbol": symbol,
+				"status": "failed",
+				"error":  "Failed to fetch market data",
+			})
+			continue
+		}
+
+		// Calculate RSI
+		closes := make([]float64, len(bars))
+		for i, bar := range bars {
+			closes[i] = bar.Close
+		}
+		rsiValues, err := indicators.CalculateRSI(closes, 14)
+		if err != nil || len(rsiValues) == 0 {
+			log.Printf("Failed to calculate RSI for %s: %v", symbol, err)
+			failed++
+			results = append(results, map[string]interface{}{
+				"symbol": symbol,
+				"status": "failed",
+				"error":  "Failed to calculate RSI",
+			})
+			continue
+		}
+
+		// Calculate ATR
+		atrBars := make([]indicators.ATRBar, len(bars))
+		for i, bar := range bars {
+			atrBars[i] = indicators.ATRBar{
+				High:  bar.High,
+				Low:   bar.Low,
+				Close: bar.Close,
+			}
+		}
+		atrValues, err := indicators.CalculateATR(atrBars, 14)
+		if err != nil || len(atrValues) == 0 {
+			log.Printf("Failed to calculate ATR for %s: %v", symbol, err)
+			failed++
+			results = append(results, map[string]interface{}{
+				"symbol": symbol,
+				"status": "failed",
+				"error":  "Failed to calculate ATR",
+			})
+			continue
+		}
+
+		// Calculate VWAP
+		vwapCalc := indicators.NewVWAPCalculator(bars)
+		vwapValue := vwapCalc.Calculate()
+
+		// Get whale activity count
+		whaleCount := 0 // Default to 0, would fetch from database if needed
+
+		// Build scoring input and calculate score
+		atrValue := atrValues[len(atrValues)-1]
+		rsiValue := rsiValues[len(rsiValues)-1]
+		atrCategory := scoring.CategorizeATRValue(atrValue, bars)
+
+		scoringInput, _ := scoring.BuildScoringInput(bars, vwapValue, rsiValue, whaleCount, atrValue, atrCategory)
+		score := detection.CalculateInterestScore(scoringInput, weights)
+
+		// Update the score in database
+		updateParams := database.UpdateWatchlistScoreParams{
+			Symbol: symbol,
+			Score:  float32(score),
+		}
+
+		err = api.Queries.UpdateWatchlistScore(r.Context(), updateParams)
+		if err != nil {
+			log.Printf("Failed to update score for %s: %v", symbol, err)
+			failed++
+			results = append(results, map[string]interface{}{
+				"symbol": symbol,
+				"status": "failed",
+				"error":  "Failed to update database",
+			})
+			continue
+		}
+
+		updated++
+		results = append(results, map[string]interface{}{
+			"symbol":    symbol,
+			"status":    "updated",
+			"old_score": item.Score,
+			"new_score": score,
+		})
+
+		log.Printf("Updated score for %s: %.2f -> %.2f", symbol, item.Score, score)
+	}
+
+	response := map[string]interface{}{
+		"success": true,
+		"total":   len(watchlist),
+		"updated": updated,
+		"failed":  failed,
+		"results": results,
+		"message": fmt.Sprintf("Refreshed scores: %d updated, %d failed", updated, failed),
 	}
 
 	WriteJSON(w, http.StatusOK, response)

@@ -92,7 +92,7 @@ func executeTradeForSymbol(ctx context.Context, cfg *config.Config, score scanne
 		case 2:
 			executeShortTrade(ctx, cfg, score, client)
 		default:
-			fmt.Println("⏭️  Skipped")
+			fmt.Println("⏭Skipped")
 		}
 	} else if score.LongSignal != nil {
 		fmt.Printf("Confidence: %.2f%%\n", score.LongSignal.Confidence)

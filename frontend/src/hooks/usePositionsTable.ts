@@ -30,9 +30,22 @@ export interface Position {
   change_today: string;
 }
 
+export interface PendingOrder {
+  id: string;
+  symbol: string;
+  side: 'buy' | 'sell';
+  qty: string;
+  filled_qty: string;
+  type: string;
+  status: string;
+  submitted_at: string;
+  filled_avg_price: string | null;
+}
+
 export interface PositionsResponse {
   count: number;
   positions: Position[];
+  pending_orders: PendingOrder[];
   risk_status: {
     enabled: boolean;
   };
@@ -54,6 +67,7 @@ export function usePositionsTable() {
       return {
         count: data?.count || 0,
         positions: data?.positions || [],
+        pending_orders: data?.pending_orders || [],
         risk_status: data?.risk_status || { enabled: true },
         timestamp: data?.timestamp || Date.now(),
       };

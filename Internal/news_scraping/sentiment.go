@@ -41,6 +41,8 @@ func NewSentimentAnalyzer() *SentimentAnalyzer {
 
 			// Moderate negative (0.7-0.89)
 			"bearish": 0.85, "downgrade": 0.85, "warning": 0.85, "alert": 0.85,
+			"lawsuit": 0.85, "lawsuits": 0.85, "class action": 0.85, "delinquency": 0.85,
+			"delinquencies": 0.85, "scrutiny": 0.85, "dispute": 0.8, "disputes": 0.8,
 			"miss": 0.8, "loss": 0.8, "losses": 0.8, "slump": 0.8,
 			"decline": 0.8, "deteriorate": 0.8, "underperform": 0.8, "fail": 0.8,
 			"struggle": 0.75, "struggles": 0.75, "weak": 0.75, "weakness": 0.75,
