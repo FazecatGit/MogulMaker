@@ -128,6 +128,9 @@ func main() {
 	r.Get("/api/performance-metrics", apiServer.HandlePerformanceMetrics)
 	r.Get("/api/risk-alerts", apiServer.HandleRiskAlerts)
 
+	// News
+	r.Get("/api/news", apiServer.HandleGetNews)
+
 	//Backtesting & Analysis
 	r.Get("/api/backtest", apiServer.HandleBacktest)
 	r.Get("/api/backtest/results", apiServer.HandleBacktestResults)

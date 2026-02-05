@@ -1,32 +1,33 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { AlertCircle, TrendingUp, TrendingDown, Calendar, ExternalLink, RefreshCw } from 'lucide-react';
+import { AlertCircle, TrendingUp, TrendingDown, Calendar, ExternalLink, RefreshCw, Zap } from 'lucide-react';
 import apiClient from '@/lib/apiClient';
 
 interface NewsItem {
-  id: string;
+  id: number;
   symbol: string;
-  title: string;
-  summary: string;
-  source: string;
-  publishedAt: string;
-  sentiment: 'bullish' | 'bearish' | 'neutral';
-  relevanceScore: number;
+  headline: string;
   url: string;
+  published_at: string;
+  source: string;
+  sentiment: string;
+  catalyst: string;
+  impact: number;
 }
 
 interface NewsData {
   news: NewsItem[];
-  lastUpdated: string;
   count: number;
+  symbols_tracked: number;
+  message?: string;
 }
 
 export default function NewsPage() {
   const [newsData, setNewsData] = useState<NewsItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [selectedSentiment, setSelectedSentiment] = useState<'all' | 'bullish' | 'bearish' | 'neutral'>('all');
+  const [selectedSentiment, setSelectedSentiment] = useState<string>('all');
   const [searchSymbol, setSearchSymbol] = useState('');
 
   useEffect(() => {
@@ -37,67 +38,32 @@ export default function NewsPage() {
     setIsLoading(true);
     setError(null);
     try {
-      const response = await apiClient.get('/analysis/report?symbol=*');
-      if (response) {
-        // Handle both array and object responses
-        const data = response.data;
-        const news = Array.isArray(data) ? data : data.news || data;
-        setNewsData(Array.isArray(news) ? news : []);
+      const data = await apiClient.get('/news') as NewsData;
+      console.log('News data received:', data);
+      if (data) {
+        setNewsData(data.news || []);
       }
     } catch (err: any) {
+      console.error('News fetch error:', err);
       setError(err.message || 'Failed to fetch news');
-      // Fallback mock data for demonstration
-      setNewsData([
-        {
-          id: '1',
-          symbol: 'TSLA',
-          title: 'Tesla Q4 Earnings Beat Expectations',
-          summary: 'Tesla reported stronger than expected Q4 earnings with improved margins.',
-          source: 'Bloomberg',
-          publishedAt: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
-          sentiment: 'bullish',
-          relevanceScore: 0.92,
-          url: '#',
-        },
-        {
-          id: '2',
-          symbol: 'AAPL',
-          title: 'Apple Faces Supply Chain Challenges',
-          summary: 'Supply chain disruptions could impact Q1 2025 iPhone production.',
-          source: 'Reuters',
-          publishedAt: new Date(Date.now() - 4 * 60 * 60 * 1000).toISOString(),
-          sentiment: 'bearish',
-          relevanceScore: 0.78,
-          url: '#',
-        },
-        {
-          id: '3',
-          symbol: 'MSFT',
-          title: 'Microsoft Cloud Revenue Grows 30%',
-          summary: 'Azure cloud services continue strong growth trajectory.',
-          source: 'MarketWatch',
-          publishedAt: new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString(),
-          sentiment: 'bullish',
-          relevanceScore: 0.85,
-          url: '#',
-        },
-      ]);
+      setNewsData([]);
     } finally {
       setIsLoading(false);
     }
   };
 
   const filteredNews = newsData.filter(item => {
-    const sentimentMatch = selectedSentiment === 'all' || item.sentiment === selectedSentiment;
+    const sentimentMatch = selectedSentiment === 'all' || item.sentiment.toUpperCase() === selectedSentiment.toUpperCase();
     const symbolMatch = !searchSymbol || item.symbol.toUpperCase().includes(searchSymbol.toUpperCase());
     return sentimentMatch && symbolMatch;
   });
 
   const getSentimentColor = (sentiment: string) => {
-    switch (sentiment) {
-      case 'bullish':
+    const sentimentUpper = sentiment.toUpperCase();
+    switch (sentimentUpper) {
+      case 'POSITIVE':
         return 'bg-green-500/20 border-green-500/50 text-green-400';
-      case 'bearish':
+      case 'NEGATIVE':
         return 'bg-red-500/20 border-red-500/50 text-red-400';
       default:
         return 'bg-slate-500/20 border-slate-500/50 text-slate-400';
@@ -105,10 +71,11 @@ export default function NewsPage() {
   };
 
   const getSentimentIcon = (sentiment: string) => {
-    switch (sentiment) {
-      case 'bullish':
+    const sentimentUpper = sentiment.toUpperCase();
+    switch (sentimentUpper) {
+      case 'POSITIVE':
         return <TrendingUp className="w-4 h-4" />;
-      case 'bearish':
+      case 'NEGATIVE':
         return <TrendingDown className="w-4 h-4" />;
       default:
         return <AlertCircle className="w-4 h-4" />;
@@ -168,17 +135,17 @@ export default function NewsPage() {
           <div>
             <label className="block text-slate-300 text-sm font-semibold mb-2">Filter by Sentiment</label>
             <div className="flex gap-2">
-              {(['all', 'bullish', 'bearish', 'neutral'] as const).map((sentiment) => (
+              {(['all', 'POSITIVE', 'NEGATIVE', 'NEUTRAL'] as const).map((sentiment) => (
                 <button
                   key={sentiment}
-                  onClick={() => setSelectedSentiment(sentiment)}
+                  onClick={() => setSelectedSentiment(sentiment === 'all' ? 'all' : sentiment)}
                   className={`px-3 py-2 rounded-lg font-semibold transition capitalize ${
                     selectedSentiment === sentiment
                       ? 'bg-blue-600 text-white'
                       : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
                   }`}
                 >
-                  {sentiment}
+                  {sentiment === 'all' ? 'All' : sentiment.charAt(0) + sentiment.slice(1).toLowerCase()}
                 </button>
               ))}
             </div>
@@ -216,15 +183,15 @@ export default function NewsPage() {
 
       {/* News List */}
       <div className="space-y-4">
-        {filteredNews.map((item) => (
+        {filteredNews.map((item, index) => (
           <div
-            key={item.id}
+            key={`${item.symbol}-${item.url}-${index}`}
             className="bg-slate-800 rounded-lg border border-slate-700 p-5 hover:border-slate-600 transition"
           >
             <div className="flex items-start justify-between gap-4">
               <div className="flex-1">
                 {/* Header Row */}
-                <div className="flex items-center gap-3 mb-2">
+                <div className="flex items-center gap-3 mb-2 flex-wrap">
                   <span className="text-sm font-bold text-blue-400 bg-blue-500/20 px-2 py-1 rounded">
                     {item.symbol}
                   </span>
@@ -234,18 +201,23 @@ export default function NewsPage() {
                     )}`}
                   >
                     {getSentimentIcon(item.sentiment)}
-                    {item.sentiment.charAt(0).toUpperCase() + item.sentiment.slice(1)}
+                    {item.sentiment.charAt(0).toUpperCase() + item.sentiment.slice(1).toLowerCase()}
                   </span>
-                  <span className="text-xs text-slate-400">
-                    {(item.relevanceScore * 100).toFixed(0)}% relevant
-                  </span>
+                  {item.catalyst && item.catalyst !== 'NO_CATALYST' && (
+                    <span className="text-xs font-semibold px-2 py-1 rounded border bg-purple-500/20 border-purple-500/50 text-purple-400 flex items-center gap-1">
+                      <Zap className="w-3 h-3" />
+                      {item.catalyst}
+                    </span>
+                  )}
+                  {item.impact > 0 && (
+                    <span className="text-xs text-slate-400">
+                      Impact: {(item.impact * 100).toFixed(0)}%
+                    </span>
+                  )}
                 </div>
 
                 {/* Title */}
-                <h3 className="text-lg font-bold text-white mb-2">{item.title}</h3>
-
-                {/* Summary */}
-                <p className="text-slate-400 text-sm mb-3">{item.summary}</p>
+                <h3 className="text-lg font-bold text-white mb-2">{item.headline}</h3>
 
                 {/* Footer */}
                 <div className="flex items-center justify-between text-xs text-slate-500">
@@ -253,7 +225,7 @@ export default function NewsPage() {
                     <span className="font-semibold">{item.source}</span>
                     <span className="flex items-center gap-1">
                       <Calendar className="w-3 h-3" />
-                      {formatTime(item.publishedAt)}
+                      {formatTime(item.published_at)}
                     </span>
                   </div>
                 </div>

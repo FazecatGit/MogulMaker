@@ -6,7 +6,7 @@ import { useScout } from '@/hooks/useScout';
 import apiClient from '@/lib/apiClient';
 
 export default function ScouterPage() {
-  const [minScore, setMinScore] = useState(50);
+  const [minScore, setMinScore] = useState(10);
   const [limit, setLimit] = useState(15);
   const [scanTriggered, setScanTriggered] = useState(false);
   const [offset, setOffset] = useState(0);

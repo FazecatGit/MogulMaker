@@ -16,7 +16,6 @@ func NewNewsStorage(queries *db.Queries) *NewsStorage {
 	return &NewsStorage{queries: queries}
 }
 
-// SaveArticle saves a news article to the database
 func (ns *NewsStorage) SaveArticle(ctx context.Context, article NewsArticle) error {
 	err := ns.queries.SaveNewsArticle(ctx, db.SaveNewsArticleParams{
 		Symbol:      article.Symbol,
@@ -32,7 +31,6 @@ func (ns *NewsStorage) SaveArticle(ctx context.Context, article NewsArticle) err
 	return nil
 }
 
-// GetLatestNews retrieves the latest news articles for a symbol
 func (ns *NewsStorage) GetLatestNews(ctx context.Context, symbol string, limit int32) ([]NewsArticle, error) {
 	rows, err := ns.queries.GetLatestNews(ctx, db.GetLatestNewsParams{
 		Symbol: symbol,
@@ -58,7 +56,6 @@ func (ns *NewsStorage) GetLatestNews(ctx context.Context, symbol string, limit i
 	return articles, nil
 }
 
-// GetNewsForScreener retrieves news for multiple symbols for screener purposes
 func (ns *NewsStorage) GetNewsForScreener(ctx context.Context, symbols []string) ([]NewsArticle, error) {
 	rows, err := ns.queries.GetNewsForScreener(ctx, symbols)
 	if err != nil {

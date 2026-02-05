@@ -41,29 +41,24 @@ func (c *FinnhubClient) FetchNews(symbol string, limit int) ([]NewsArticle, erro
 		symbol, dateFrom, dateTo, c.apiKey,
 	)
 
-	// Make HTTP request
 	resp, err := c.httpClient.Get(url)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch news: %v", err)
 	}
 	defer resp.Body.Close()
 
-	// Check status code
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
 		return nil, fmt.Errorf("API returned status %d: %s", resp.StatusCode, string(body))
 	}
 
-	// Parse JSON response
 	var newsItems []finnhubNewsItem
 	if err := json.NewDecoder(resp.Body).Decode(&newsItems); err != nil {
 		return nil, fmt.Errorf("failed to parse news: %v", err)
 	}
 
-	// Convert to NewsArticle
 	var articles []NewsArticle
 
-	// Create sentiment analyzer and catalyst detector
 	sentimentAnalyzer := NewSentimentAnalyzer()
 	catalystDetector := NewCatalystDetector()
 

@@ -6,13 +6,12 @@ import (
 	"github.com/alpacahq/alpaca-trade-api-go/v3/alpaca"
 )
 
-// TradeHistoryRecord represents a single trade record with P&L info
 type TradeHistoryRecord struct {
-	Order      alpaca.Order
-	PnL        float64
-	ReturnPct  float64
-	PairedWith *alpaca.Order
-	IsClosed   bool
+	Order       alpaca.Order
+	PnL         float64
+	ReturnPct   float64
+	PairedWith  *alpaca.Order
+	IsClosed    bool
 	TradePairID string
 }
 
@@ -130,7 +129,7 @@ func PairTradesAndCalculatePnL(allOrders []alpaca.Order) []TradeHistoryRecord {
 // FormatTradeRecordsAsJSON converts trade history records to JSON-friendly format
 func FormatTradeRecordsAsJSON(records []TradeHistoryRecord) []map[string]interface{} {
 	var trades []map[string]interface{}
-	
+
 	for _, rec := range records {
 		order := rec.Order
 		filledQty, _ := order.FilledQty.Float64()
