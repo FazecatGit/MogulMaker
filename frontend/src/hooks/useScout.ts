@@ -23,7 +23,8 @@ export interface ScoutResponse {
 
 export function useScout(minScore: number = 50, limit: number = 15, offset: number = 0, enabled: boolean = false) {
   return useQuery<ScoutResponse>({
-    queryKey: ['scout-opportunities', minScore, limit, offset, enabled],
+    queryKey: ['scout-opportunities', limit, offset, minScore],
+    enabled: enabled, // Only run query if explicitly enabled
     queryFn: async () => {
       try {
         console.log('[useScout] Starting query with:', { minScore, limit, offset, enabled });
@@ -62,7 +63,6 @@ export function useScout(minScore: number = 50, limit: number = 15, offset: numb
         throw error;
       }
     },
-    enabled: enabled,
     staleTime: Infinity,
     refetchInterval: false,
     retry: false,

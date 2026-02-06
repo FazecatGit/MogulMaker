@@ -1,17 +1,20 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { AlertCircle, TrendingUp, RefreshCw, Target, Zap, Star, Plus, X, Play } from 'lucide-react';
 import { useScout } from '@/hooks/useScout';
 import apiClient from '@/lib/apiClient';
 
 export default function ScouterPage() {
   const [minScore, setMinScore] = useState(10);
+  const [minScoreSlider, setMinScoreSlider] = useState(10); // Setup screen slider
+  const [minScoreSidebarSlider, setMinScoreSidebarSlider] = useState(10); // Sidebar slider (doesn't trigger scans)
   const [limit, setLimit] = useState(15);
   const [scanTriggered, setScanTriggered] = useState(false);
   const [offset, setOffset] = useState(0);
   const [allOpportunities, setAllOpportunities] = useState<any[]>([]);
   const [expandedSymbol, setExpandedSymbol] = useState<string | null>(null);
+  const debounceTimer = useRef<NodeJS.Timeout | null>(null);
   
   console.log('[ScouterPage] Rendering with:', { minScore, limit, scanTriggered, offset });
   
@@ -35,8 +38,15 @@ export default function ScouterPage() {
     }
   }, [data?.opportunities, offset]);
 
+  const getScoreBadgeColor = (score: number) => {
+    if (score >= 8) return 'bg-green-500/20 border-green-500/50 text-green-400 border';
+    if (score >= 6) return 'bg-yellow-500/20 border-yellow-500/50 text-yellow-400 border';
+    return 'bg-red-500/20 border-red-500/50 text-red-400 border';
+  };
+
   const handleStartScan = () => {
-    console.log('[ScouterPage] Starting fresh scan...');
+    console.log('[ScouterPage] Starting fresh scan with score:', minScoreSidebarSlider);
+    setMinScore(minScoreSidebarSlider); // Use sidebar slider value for scan
     setOffset(0);
     setAllOpportunities([]);
     setScanTriggered(true);
@@ -129,11 +139,11 @@ export default function ScouterPage() {
                 type="range"
                 min="0"
                 max="10"
-                value={minScore}
-                onChange={(e) => setMinScore(parseInt(e.target.value))}
+                value={minScoreSlider}
+                onChange={(e) => setMinScoreSlider(parseInt(e.target.value))}
                 className="flex-1 h-2 bg-slate-700 rounded cursor-pointer"
               />
-              <span className="text-white font-bold text-lg w-12">{minScore}</span>
+              <span className="text-white font-bold text-lg w-12">{minScoreSlider}</span>
             </div>
           </div>
 
@@ -149,8 +159,8 @@ export default function ScouterPage() {
     );
   }
 
-  // Loading state
-  if (isLoading) {
+  // Loading state - only show full skeleton on initial load (offset=0)
+  if (isLoading && allOpportunities.length === 0) {
     return (
       <div className="space-y-6">
         <div className="mb-8">
@@ -249,11 +259,11 @@ export default function ScouterPage() {
                     type="range"
                     min="0"
                     max="10"
-                    value={minScore}
-                    onChange={(e) => setMinScore(parseInt(e.target.value))}
+                    value={minScoreSidebarSlider}
+                    onChange={(e) => setMinScoreSidebarSlider(parseInt(e.target.value))}
                     className="flex-1 h-2 bg-slate-700 rounded cursor-pointer"
                   />
-                  <span className="text-white font-bold w-8 text-center">{minScore}</span>
+                  <span className="text-white font-bold w-8 text-center">{minScoreSidebarSlider}</span>
                 </div>
               </div>
 
@@ -379,12 +389,8 @@ export default function ScouterPage() {
                         <div className="font-semibold text-white text-lg">{opp.symbol}</div>
                       </td>
                       <td className="px-6 py-4 text-right">
-                        <span className={`px-3 py-1 rounded text-sm font-bold ${
-                          opp.score >= 8 ? 'bg-green-900/30 text-green-400' : 
-                          opp.score >= 6 ? 'bg-yellow-900/30 text-yellow-400' : 
-                          'bg-orange-900/30 text-orange-400'
-                        }`}>
-                          {(opp.score / 10).toFixed(1)}
+                        <span className={`inline-block px-3 py-1 rounded-lg font-bold text-sm ${getScoreBadgeColor(opp.score)}`}>
+                          {opp.score.toFixed(1)}
                         </span>
                       </td>
                       <td className="px-6 py-4 text-right text-slate-300">
@@ -429,9 +435,9 @@ export default function ScouterPage() {
                                 <p className={`text-lg font-bold ${
                                   opp.score >= 8 ? 'text-green-400' : 
                                   opp.score >= 6 ? 'text-yellow-400' : 
-                                  'text-orange-400'
+                                  'text-red-400'
                                 }`}>
-                                  {(opp.score / 10).toFixed(2)}
+                                  {opp.score.toFixed(1)}
                                 </p>
                               </div>
                               
@@ -479,12 +485,8 @@ export default function ScouterPage() {
                     </div>
                     <div className="font-semibold text-white text-lg">{opp.symbol}</div>
                   </div>
-                  <span className={`px-3 py-1 rounded text-sm font-bold ${
-                    opp.score >= 8 ? 'bg-green-900/30 text-green-400' : 
-                    opp.score >= 6 ? 'bg-yellow-900/30 text-yellow-400' : 
-                    'bg-orange-900/30 text-orange-400'
-                  }`}>
-                    {(opp.score / 10).toFixed(1)}
+                  <span className={`px-3 py-1 rounded-lg text-sm font-bold ${getScoreBadgeColor(opp.score)}`}>
+                    {opp.score.toFixed(1)}
                   </span>
                 </div>
 
@@ -531,6 +533,14 @@ export default function ScouterPage() {
           >
             Scan Again
           </button>
+        </div>
+      )}
+
+      {/* Loading indicator when fetching next batch */}
+      {isLoading && allOpportunities.length > 0 && (
+        <div className="border-t border-slate-700 pt-6 flex items-center justify-center gap-3">
+          <RefreshCw className="w-5 h-5 text-blue-400 animate-spin" />
+          <span className="text-slate-400">Loading next batch...</span>
         </div>
       )}
 

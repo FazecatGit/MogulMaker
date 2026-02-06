@@ -872,6 +872,19 @@ func (api *API) HandleBacktest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Parse dates - handle multiple formats (YYYY-MM-DD, DD/MM/YYYY, DD.MM.YYYY)
+	startDateParsed := parseDate(startDate)
+	endDateParsed := parseDate(endDate)
+
+	if startDateParsed.IsZero() || endDateParsed.IsZero() {
+		WriteError(w, http.StatusBadRequest, fmt.Sprintf("Invalid date format. Use YYYY-MM-DD (received: %s to %s)", startDate, endDate))
+		return
+	}
+
+	// Normalize dates to YYYY-MM-DD format for API consistency
+	startDate = startDateParsed.Format("2006-01-02")
+	endDate = endDateParsed.Format("2006-01-02")
+
 	// Parse capital amount
 	capital := 100000.0
 	if capitalStr != "" {
@@ -890,7 +903,38 @@ func (api *API) HandleBacktest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	log.Printf("Fetched %d bars for backtest from %s to %s", len(historicalBars), startDate, endDate)
+	// Parse dates for filtering (startDateParsed and endDateParsed already parsed at top)
+	startDateOnly, _ := time.Parse("2006-01-02", startDate)
+	endDateOnly, _ := time.Parse("2006-01-02", endDate)
+	// Extend end date to include the entire day
+	endDateOnly = endDateOnly.AddDate(0, 0, 1)
+
+	// Filter bars to only include data within the specified date range
+	var filteredBars []datafeed.Bar
+	for _, bar := range historicalBars {
+		barDate, err := time.Parse(time.RFC3339, bar.Timestamp)
+		if err != nil {
+			log.Printf("Error parsing bar timestamp %s: %v", bar.Timestamp, err)
+			continue
+		}
+
+		// Compare dates only (ignore time component)
+		barDateOnly := barDate.Truncate(24 * time.Hour)
+
+		// Include bars that fall within [startDate, endDate] inclusive
+		if !barDateOnly.Before(startDateOnly) && barDateOnly.Before(endDateOnly) {
+			filteredBars = append(filteredBars, bar)
+		}
+	}
+
+	historicalBars = filteredBars
+
+	// Sort bars chronologically (oldest first) for backtest
+	sort.Slice(historicalBars, func(i, j int) bool {
+		timeI, _ := time.Parse(time.RFC3339, historicalBars[i].Timestamp)
+		timeJ, _ := time.Parse(time.RFC3339, historicalBars[j].Timestamp)
+		return timeI.Before(timeJ)
+	})
 
 	// Run backtest with TradeResult from metrics.RunBacktest
 	trades, err := metrics.RunBacktest(symbol, historicalBars, capital)
@@ -902,8 +946,6 @@ func (api *API) HandleBacktest(w http.ResponseWriter, r *http.Request) {
 
 	// Calculate metrics from trades
 	winRate := metrics.CalculateWinRate(trades)
-	sharpeRatio := metrics.CalculateSharpeRatio(trades, 0.02)
-	sortinoRatio := metrics.CalculateSortinoRatio(trades, 0.02)
 
 	winningTrades := 0
 	totalPnL := 0.0
@@ -930,6 +972,41 @@ func (api *API) HandleBacktest(w http.ResponseWriter, r *http.Request) {
 
 	backtestID := symbol + "_" + time.Now().Format("20060102150405")
 
+	// Build historical bars data for charting
+	formattedBars := make([]map[string]interface{}, 0)
+	for _, bar := range historicalBars {
+		// Parse timestamp string and format for display
+		dateStr := "1970-01-01"
+		if t, err := time.Parse(time.RFC3339, bar.Timestamp); err == nil {
+			dateStr = t.Format("2006-01-02")
+		}
+
+		formattedBars = append(formattedBars, map[string]interface{}{
+			"date":      dateStr,
+			"open":      bar.Open,
+			"high":      bar.High,
+			"low":       bar.Low,
+			"close":     bar.Close,
+			"volume":    bar.Volume,
+			"timestamp": bar.Timestamp,
+		})
+	}
+
+	// Format trades for display on chart
+	formattedTrades := make([]map[string]interface{}, 0)
+	for i, trade := range trades {
+		formattedTrades = append(formattedTrades, map[string]interface{}{
+			"trade_num":   i + 1,
+			"entry_price": trade.EntryPrice,
+			"exit_price":  trade.ExitPrice,
+			"entry_time":  trade.EntryTime.Format("2006-01-02"),
+			"exit_time":   trade.ExitTime.Format("2006-01-02"),
+			"pnl":         trade.PnL,
+			"return_pct":  trade.ReturnPercent,
+			"quantity":    trade.Quantity,
+		})
+	}
+
 	response := map[string]interface{}{
 		"backtest_id":      backtestID,
 		"symbol":           symbol,
@@ -939,8 +1016,6 @@ func (api *API) HandleBacktest(w http.ResponseWriter, r *http.Request) {
 		"initial_capital":  capital,
 		"final_balance":    finalBalance,
 		"total_return_pct": totalReturnPct,
-		"sharpe_ratio":     sharpeRatio,
-		"sortino_ratio":    sortinoRatio,
 		"win_rate":         winRate,
 		"total_trades":     len(trades),
 		"winning_trades":   winningTrades,
@@ -948,6 +1023,8 @@ func (api *API) HandleBacktest(w http.ResponseWriter, r *http.Request) {
 		"largest_win":      largestWin,
 		"largest_loss":     largestLoss,
 		"created_at":       time.Now().Unix(),
+		"historical_bars":  formattedBars,
+		"trades":           formattedTrades,
 	}
 
 	// Cache the backtest results
@@ -1612,6 +1689,14 @@ func (api *API) HandleScoutStocks(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	offsetStr := r.URL.Query().Get("offset")
+	offset := 0
+	if offsetStr != "" {
+		if parsedOffset, err := strconv.Atoi(offsetStr); err == nil && parsedOffset >= 0 {
+			offset = parsedOffset
+		}
+	}
+
 	minScoreStr := r.URL.Query().Get("min_score")
 	minScore := 50.0
 	if minScoreStr != "" {
@@ -1620,10 +1705,10 @@ func (api *API) HandleScoutStocks(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	log.Printf("Scanning %d stocks with min score %.1f (limit=%s, minScore=%s)", limit, minScore, limitStr, minScoreStr)
+	log.Printf("Scanning stocks with min score %.1f (limit=%d, offset=%d)", minScore, limit, offset)
 	ctx := context.Background()
 
-	candidates, totalScanned, err := scanner.PerformProfileScan(ctx, "api_scout", minScore, 0, limit, nil)
+	candidates, totalScanned, err := scanner.PerformProfileScan(ctx, "api_scout", minScore, offset, limit, nil)
 	if err != nil {
 		errMsg := err.Error()
 		log.Printf("SCANNER ERROR: %v", errMsg)
@@ -1643,12 +1728,39 @@ func (api *API) HandleScoutStocks(w http.ResponseWriter, r *http.Request) {
 			break
 		}
 
+		rsi := 0.0
+		atr := 0.0
+
+		bars, err := datafeed.GetAlpacaBars(candidate.Symbol, "1Day", 50, "")
+		if err == nil && len(bars) >= 14 {
+			closes := make([]float64, len(bars))
+			atrBars := make([]indicators.ATRBar, len(bars))
+			for j, bar := range bars {
+				closes[j] = bar.Close
+				atrBars[j] = indicators.ATRBar{
+					High:  bar.High,
+					Low:   bar.Low,
+					Close: bar.Close,
+				}
+			}
+
+			rsiValues, err := indicators.CalculateRSI(closes, 14)
+			if err == nil && len(rsiValues) > 0 {
+				rsi = rsiValues[len(rsiValues)-1]
+			}
+
+			atrValues, err := indicators.CalculateATR(atrBars, 14)
+			if err == nil && len(atrValues) > 0 {
+				atr = atrValues[len(atrValues)-1]
+			}
+		}
+
 		opp := map[string]interface{}{
 			"symbol":    candidate.Symbol,
-			"score":     candidate.Score,
+			"score":     candidate.Score, // Score is already 0-10
 			"analysis":  candidate.Analysis,
-			"rsi":       candidate.RSI,
-			"atr":       candidate.ATR,
+			"rsi":       rsi,
+			"atr":       atr,
 			"timestamp": time.Now().Unix(),
 			"rank":      i + 1,
 		}
@@ -1666,4 +1778,21 @@ func (api *API) HandleScoutStocks(w http.ResponseWriter, r *http.Request) {
 	}
 
 	WriteJSON(w, http.StatusOK, response)
+}
+
+func parseDate(dateStr string) time.Time {
+	formats := []string{
+		"2006-01-02", // YYYY-MM-DD (standard)
+		"02/01/2006", // DD/MM/YYYY
+		"02.01.2006", // DD.MM.YYYY
+		"01-02-2006", // MM-DD-YYYY (US format)
+	}
+
+	for _, format := range formats {
+		if t, err := time.Parse(format, dateStr); err == nil {
+			return t
+		}
+	}
+
+	return time.Time{} // Return zero time if parsing fails
 }

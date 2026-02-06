@@ -2,7 +2,28 @@
 
 import { useState } from 'react';
 import { Calendar, Play, RotateCcw, TrendingUp, BarChart3, AlertCircle } from 'lucide-react';
+import {
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
+  ResponsiveContainer,
+} from 'recharts';
 import apiClient from '@/lib/apiClient';
+
+interface Trade {
+  trade_num: number;
+  entry_price: number;
+  exit_price: number;
+  entry_time: string;
+  exit_time: string;
+  pnl: number;
+  return_pct: number;
+  quantity: number;
+}
 
 interface BacktestResult {
   backtest_id: string;
@@ -13,8 +34,6 @@ interface BacktestResult {
   initial_capital: number;
   final_balance: number;
   total_return_pct: number;
-  sharpe_ratio: number;
-  sortino_ratio: number;
   win_rate: number;
   total_trades: number;
   winning_trades: number;
@@ -22,6 +41,16 @@ interface BacktestResult {
   largest_win: number;
   largest_loss: number;
   created_at: number;
+  historical_bars?: Array<{
+    date: string;
+    open: number;
+    high: number;
+    low: number;
+    close: number;
+    volume: number;
+    timestamp: number;
+  }>;
+  trades?: Trade[];
 }
 
 export default function BacktestPage() {
@@ -213,83 +242,218 @@ export default function BacktestPage() {
                   </div>
 
                   <div className="bg-slate-700/50 rounded-lg p-4 border border-slate-600">
-                    <p className="text-slate-400 text-xs mb-1">Total Trades</p>
-                    <p className="text-2xl font-bold text-white">
-                      {results.total_trades}
+                    <p className="text-slate-400 text-xs mb-1">Largest Win</p>
+                    <p className="text-2xl font-bold text-green-400">
+                      {formatCurrency(results.largest_win)}
                     </p>
                   </div>
 
                   <div className="bg-slate-700/50 rounded-lg p-4 border border-slate-600">
-                    <p className="text-slate-400 text-xs mb-1">Sharpe Ratio</p>
-                    <p className="text-2xl font-bold text-orange-400">
-                      {results.sharpe_ratio.toFixed(2)}
+                    <p className="text-slate-400 text-xs mb-1">Largest Loss</p>
+                    <p className="text-2xl font-bold text-red-400">
+                      {formatCurrency(Math.abs(results.largest_loss))}
                     </p>
                   </div>
                 </div>
               </div>
 
               {/* Detailed Metrics */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="bg-slate-800 rounded-lg border border-slate-700 p-4">
-                  <div className="flex items-center gap-2 mb-3">
-                    <TrendingUp className="w-5 h-5 text-blue-400" />
-                    <h4 className="font-semibold text-white">Performance</h4>
-                  </div>
-                  <div className="space-y-2 text-sm">
-                    <div className="flex justify-between">
-                      <span className="text-slate-400">Starting Balance:</span>
-                      <span className="text-white font-semibold">{formatCurrency(results.initial_capital)}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-slate-400">Ending Balance:</span>
-                      <span className={`font-semibold ${results.final_balance >= results.initial_capital ? 'text-green-400' : 'text-red-400'}`}>
-                        {formatCurrency(results.final_balance)}
-                      </span>
-                    </div>
-                    <div className="flex justify-between pt-2 border-t border-slate-700">
-                      <span className="text-slate-400">Sharpe Ratio:</span>
-                      <span className="text-white font-semibold">{results.sharpe_ratio.toFixed(2)}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-slate-400">Sortino Ratio:</span>
-                      <span className="text-white font-semibold">{results.sortino_ratio.toFixed(2)}</span>
-                    </div>
-                  </div>
+              <div className="bg-slate-800 rounded-lg border border-slate-700 p-4">
+                <div className="flex items-center gap-2 mb-3">
+                  <TrendingUp className="w-5 h-5 text-blue-400" />
+                  <h4 className="font-semibold text-white">Performance</h4>
                 </div>
-
-                <div className="bg-slate-800 rounded-lg border border-slate-700 p-4">
-                  <div className="flex items-center gap-2 mb-3">
-                    <BarChart3 className="w-5 h-5 text-green-400" />
-                    <h4 className="font-semibold text-white">Trade Statistics</h4>
+                <div className="space-y-2 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-slate-400">Starting Balance:</span>
+                    <span className="text-white font-semibold">{formatCurrency(results.initial_capital)}</span>
                   </div>
-                  <div className="space-y-2 text-sm">
-                    <div className="flex justify-between">
-                      <span className="text-slate-400">Total Trades:</span>
-                      <span className="text-white font-semibold">{results.total_trades}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-slate-400">Winning Trades:</span>
-                      <span className="text-green-400 font-semibold">
-                        {results.winning_trades}
-                      </span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-slate-400">Losing Trades:</span>
-                      <span className="text-red-400 font-semibold">
-                        {results.losing_trades}
-                      </span>
-                    </div>
-                    <div className="flex justify-between pt-2 border-t border-slate-700">
-                      <span className="text-slate-400">Largest Win:</span>
-                      <span className="text-green-400 font-semibold">{formatCurrency(results.largest_win)}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-slate-400">Largest Loss:</span>
-                      <span className="text-red-400 font-semibold">{formatCurrency(Math.abs(results.largest_loss))}</span>
-                    </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-400">Ending Balance:</span>
+                    <span className={`font-semibold ${results.final_balance >= results.initial_capital ? 'text-green-400' : 'text-red-400'}`}>
+                      {formatCurrency(results.final_balance)}
+                    </span>
+                  </div>
+                  <div className="flex justify-between pt-2 border-t border-slate-700">
+                    <span className="text-slate-400">Total Trades:</span>
+                    <span className="text-white font-semibold">{results.total_trades}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-400">Winning Trades:</span>
+                    <span className="text-green-400 font-semibold">{results.winning_trades}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-400">Losing Trades:</span>
+                    <span className="text-red-400 font-semibold">{results.losing_trades}</span>
                   </div>
                 </div>
               </div>
+
+              {/* Historical Bars Chart */}
+              {results.historical_bars && results.historical_bars.length > 0 && (
+                <div className="bg-slate-800 rounded-lg border border-slate-700 p-6">
+                  <h3 className="text-lg font-semibold text-white mb-4">Price Movement</h3>
+                  <div className="w-full h-96">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <LineChart
+                        data={results.historical_bars}
+                        margin={{ top: 5, right: 30, left: 0, bottom: 5 }}
+                      >
+                        <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
+                        <XAxis 
+                          dataKey="date" 
+                          stroke="#64748b"
+                          tick={{ fontSize: 12 }}
+                          interval={Math.floor(results.historical_bars.length / 10)}
+                        />
+                        <YAxis 
+                          stroke="#64748b"
+                          tick={{ fontSize: 12 }}
+                          domain={['dataMin - 5', 'dataMax + 5']}
+                          label={{ value: 'Price ($)', angle: -90, position: 'insideLeft' }}
+                        />
+                        <Tooltip 
+                          contentStyle={{
+                            backgroundColor: '#1e293b',
+                            border: '1px solid #475569',
+                            borderRadius: '6px',
+                          }}
+                          labelStyle={{ color: '#e2e8f0' }}
+                          formatter={(value: any, name: string | undefined) => {
+                            if (!name) return [value, name];
+                            if (['open', 'high', 'low', 'close'].includes(name)) {
+                              return [`$${value.toFixed(2)}`, name.toUpperCase()];
+                            }
+                            if (name === 'volume') {
+                              return [`${(value / 1000000).toFixed(1)}M`, 'Volume'];
+                            }
+                            return [value, name];
+                          }}
+                          cursor={{ stroke: '#64748b', strokeDasharray: '5 5' }}
+                        />
+                        <Legend 
+                          wrapperStyle={{ paddingTop: '20px' }}
+                          iconType="line"
+                        />
+                        <Line 
+                          type="monotone" 
+                          dataKey="close" 
+                          stroke="#22c55e" 
+                          dot={false}
+                          strokeWidth={2}
+                          name="Close"
+                          isAnimationActive={false}
+                        />
+                        <Line 
+                          type="monotone" 
+                          dataKey="high" 
+                          stroke="#6b7280" 
+                          dot={false}
+                          strokeWidth={1}
+                          name="High"
+                          strokeDasharray="5 5"
+                          isAnimationActive={false}
+                        />
+                        <Line 
+                          type="monotone" 
+                          dataKey="low" 
+                          stroke="#6b7280" 
+                          dot={false}
+                          strokeWidth={1}
+                          name="Low"
+                          strokeDasharray="5 5"
+                          isAnimationActive={false}
+                        />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  </div>
+
+                  {/* Price Statistics */}
+                  <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mt-6 text-sm">
+                    <div className="bg-slate-700/30 rounded p-3">
+                      <p className="text-slate-400 text-xs mb-1">Highest</p>
+                      <p className="font-bold text-green-400 text-lg">
+                        ${Math.max(...results.historical_bars.map(b => b.high)).toFixed(2)}
+                      </p>
+                    </div>
+                    <div className="bg-slate-700/30 rounded p-3">
+                      <p className="text-slate-400 text-xs mb-1">Lowest</p>
+                      <p className="font-bold text-red-400 text-lg">
+                        ${Math.min(...results.historical_bars.map(b => b.low)).toFixed(2)}
+                      </p>
+                    </div>
+                    <div className="bg-slate-700/30 rounded p-3">
+                      <p className="text-slate-400 text-xs mb-1">Avg Volume</p>
+                      <p className="font-bold text-white text-lg">
+                        {(results.historical_bars.reduce((sum, b) => sum + b.volume, 0) / results.historical_bars.length / 1000000).toFixed(1)}M
+                      </p>
+                    </div>
+                    <div className="bg-slate-700/30 rounded p-3">
+                      <p className="text-slate-400 text-xs mb-1">Range</p>
+                      <p className="font-bold text-white text-lg">
+                        ${(Math.max(...results.historical_bars.map(b => b.high)) - Math.min(...results.historical_bars.map(b => b.low))).toFixed(2)}
+                      </p>
+                    </div>
+                    <div className="bg-slate-700/30 rounded p-3">
+                      <p className="text-slate-400 text-xs mb-1">% Change</p>
+                      <p className={`font-bold text-lg ${
+                        results.historical_bars[results.historical_bars.length - 1].close >= results.historical_bars[0].open
+                          ? 'text-green-400'
+                          : 'text-red-400'
+                      }`}>
+                        {(((results.historical_bars[results.historical_bars.length - 1].close - results.historical_bars[0].open) / results.historical_bars[0].open) * 100).toFixed(2)}%
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Trades Table */}
+                  {results.trades && results.trades.length > 0 && (
+                    <div className="mt-8 bg-slate-700/20 rounded-lg border border-slate-600">
+                      <div className="p-4 border-b border-slate-600">
+                        <h3 className="text-white font-semibold">Trade Details</h3>
+                      </div>
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-sm">
+                          <thead>
+                            <tr className="border-b border-slate-600 text-slate-400 text-xs uppercase">
+                              <th className="px-4 py-3 text-left">#</th>
+                              <th className="px-4 py-3 text-left">Entry Date</th>
+                              <th className="px-4 py-3 text-right">Entry Price</th>
+                              <th className="px-4 py-3 text-left">Exit Date</th>
+                              <th className="px-4 py-3 text-right">Exit Price</th>
+                              <th className="px-4 py-3 text-right">Qty</th>
+                              <th className="px-4 py-3 text-right">P&L</th>
+                              <th className="px-4 py-3 text-right">Return %</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {results.trades.map((trade, idx) => (
+                              <tr key={idx} className="border-b border-slate-700 hover:bg-slate-700/20">
+                                <td className="px-4 py-3 text-white">{trade.trade_num}</td>
+                                <td className="px-4 py-3 text-slate-300">{trade.entry_time}</td>
+                                <td className="px-4 py-3 text-right text-slate-300">${trade.entry_price.toFixed(2)}</td>
+                                <td className="px-4 py-3 text-slate-300">{trade.exit_time}</td>
+                                <td className="px-4 py-3 text-right text-slate-300">${trade.exit_price.toFixed(2)}</td>
+                                <td className="px-4 py-3 text-right text-slate-400">{trade.quantity.toFixed(2)}</td>
+                                <td className={`px-4 py-3 text-right font-semibold ${
+                                  trade.pnl >= 0 ? 'text-green-400' : 'text-red-400'
+                                }`}>
+                                  ${trade.pnl.toFixed(2)}
+                                </td>
+                                <td className={`px-4 py-3 text-right font-semibold ${
+                                  trade.return_pct >= 0 ? 'text-green-400' : 'text-red-400'
+                                }`}>
+                                  {trade.return_pct.toFixed(2)}%
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           ) : (
             <div className="bg-slate-800 rounded-lg border border-slate-700 p-12 text-center h-96 flex items-center justify-center">
