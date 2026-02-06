@@ -40,6 +40,11 @@ type Manager struct {
 	riskEvents      []*Event
 	riskEventsMutex sync.RWMutex
 
+	// Track recently recorded position alerts to prevent duplicates
+	recentPositionAlerts  map[string]time.Time // key: symbol, value: last alert time
+	recentAlertsMutex     sync.RWMutex
+	alertDeduplicationTTL time.Duration // TTL before allowing duplicate alerts
+
 	// Alerts
 	alertCallbacks      []AlertCallback
 	alertCallbacksMutex sync.RWMutex
@@ -85,6 +90,8 @@ func NewManager(client *alpaca.Client, accountBalance float64) *Manager {
 		client:                  client,
 		lastAccountUpdateTime:   time.Now(),
 		riskEvents:              make([]*Event, 0),
+		recentPositionAlerts:    make(map[string]time.Time),
+		alertDeduplicationTTL:   3 * time.Minute, // Allow duplicate alerts every 3 minutes
 		alertCallbacks:          make([]AlertCallback, 0),
 	}
 }
@@ -126,7 +133,7 @@ func (rm *Manager) LogTradeLoss(symbol string, loss float64) {
 		rm.CurrentDailyLossAmount += loss
 		lossPercent := (rm.CurrentDailyLossAmount / rm.accountBalance) * 100
 
-		log.Printf("📉 Trade loss logged: $%.2f. Daily loss: $%.2f (%.2f%%)\n",
+		log.Printf("Trade loss logged: $%.2f. Daily loss: $%.2f (%.2f%%)\n",
 			loss, rm.CurrentDailyLossAmount, lossPercent)
 
 		// check if daily loss limit hit
@@ -192,7 +199,6 @@ func (rm *Manager) ClosePositionBySymbol(symbol string) error {
 
 // PORTFOLIO RISK ASSESSMENT
 
-// calculates total portfolio risk across all open positions
 func (rm *Manager) CalculatePortfolioRisk(positions []*position.OpenPosition) PortfolioRisk {
 	risk := PortfolioRisk{
 		TotalRiskAmount:  0,
@@ -240,6 +246,32 @@ func (rm *Manager) recordRiskEvent(event *Event) {
 	log.Printf("Risk Event: [%s] %s - %s\n", event.Severity, event.EventType, event.Details)
 }
 
+// RecordCriticalPosition records a CRITICAL position alert as a risk event, with deduplication
+func (rm *Manager) RecordCriticalPosition(event *Event) {
+	if event == nil || event.Symbol == "" {
+		return
+	}
+
+	// Check if we've recently recorded an alert for this symbol
+	rm.recentAlertsMutex.RLock()
+	lastAlertTime, exists := rm.recentPositionAlerts[event.Symbol]
+	rm.recentAlertsMutex.RUnlock()
+
+	now := time.Now()
+
+	// If we've recently recorded this symbol, skip it
+	if exists && now.Sub(lastAlertTime) < rm.alertDeduplicationTTL {
+		return
+	}
+
+	rm.recordRiskEvent(event)
+
+	// Update the last alert time for this symbol
+	rm.recentAlertsMutex.Lock()
+	rm.recentPositionAlerts[event.Symbol] = now
+	rm.recentAlertsMutex.Unlock()
+}
+
 func (rm *Manager) GetRiskEvents(limit int) []*Event {
 	rm.riskEventsMutex.RLock()
 	defer rm.riskEventsMutex.RUnlock()
@@ -251,18 +283,17 @@ func (rm *Manager) GetRiskEvents(limit int) []*Event {
 	return events
 }
 
-// PrintRiskEvents displays recent risk events in a formatted table
 func (rm *Manager) PrintRiskEvents(limit int) {
 	events := rm.GetRiskEvents(limit)
 
 	if len(events) == 0 {
-		fmt.Println("✅ No risk events recorded")
+		fmt.Println("No risk events recorded")
 		return
 	}
 
 	width := 120
 	fmt.Println("\n" + formatting.Separator(width))
-	fmt.Println("🚨 RECENT RISK EVENTS")
+	fmt.Println("RECENT RISK EVENTS")
 	fmt.Println(formatting.Separator(width))
 	fmt.Printf("%-10s %-25s %-10s %-40s %-20s\n",
 		"Severity", "Event Type", "Symbol", "Details", "Timestamp")
@@ -296,7 +327,6 @@ func (rm *Manager) SendAlert(alert *Alert) {
 
 // RISK REPORT & MONITORING
 
-// generates a comprehensive risk report
 func (rm *Manager) GenerateRiskReport(positions []*position.OpenPosition) Report {
 	accountBalance := rm.GetAccountBalance()
 	dailyLossPercent := rm.GetDailyLossPercent()
@@ -376,11 +406,10 @@ type Report struct {
 	RecentEvents        []*Event
 }
 
-// prints a formatted risk report
 func (r *Report) Print() {
 	width := 70
 	fmt.Println("\n" + formatting.Separator(width))
-	fmt.Println("📊 PORTFOLIO RISK REPORT")
+	fmt.Println("PORTFOLIO RISK REPORT")
 	fmt.Println(formatting.Separator(width))
 	fmt.Printf("Account Balance:       $%.2f\n", r.AccountBalance)
 	fmt.Printf("Open Positions:        %d/%d\n", r.OpenPositions, 5)
@@ -407,12 +436,10 @@ func (r *Report) Print() {
 	fmt.Println(formatting.Separator(width) + "\n")
 }
 
-// GetRecentEvents returns recent risk events for monitoring
 func (rm *Manager) GetRecentEvents() []string {
 	rm.riskEventsMutex.RLock()
 	defer rm.riskEventsMutex.RUnlock()
 
-	// Get events from last 24 hours
 	cutoff := time.Now().Add(-24 * time.Hour)
 	var recentEvents []string
 

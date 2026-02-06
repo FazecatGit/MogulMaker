@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"math"
 	"net/http"
 	"sort"
 	"strconv"
@@ -749,6 +750,9 @@ func (api *API) HandlePerformanceMetrics(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
+	// Update position alerts (records CRITICAL positions as risk events)
+	api.TradeMonitor.UpdatePositionAlerts()
+
 	monitors := api.TradeMonitor.GetPositionMonitors()
 
 	response := map[string]interface{}{
@@ -765,6 +769,11 @@ func (api *API) HandleRiskAlerts(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Update position alerts (records CRITICAL positions as risk events)
+	if api.TradeMonitor != nil {
+		api.TradeMonitor.UpdatePositionAlerts()
+	}
+
 	limitStr := r.URL.Query().Get("limit")
 	limit := 50
 	if limitStr != "" {
@@ -775,9 +784,37 @@ func (api *API) HandleRiskAlerts(w http.ResponseWriter, r *http.Request) {
 
 	events := api.RiskManager.GetRiskEvents(limit)
 
+	// Transform events to match frontend interface
+	alerts := make([]map[string]interface{}, len(events))
+	for i, event := range events {
+		// Generate a simple ID from symbol and timestamp
+		alertID := fmt.Sprintf("%s-%d", event.Symbol, event.Timestamp.Unix())
+
+		// Determine alert level from severity
+		level := "info"
+		if event.Severity == "CRITICAL" {
+			level = "critical"
+		} else if event.Severity == "WARNING" {
+			level = "warning"
+		}
+
+		// Map event details to RiskAlert format
+		alerts[i] = map[string]interface{}{
+			"id":           alertID,
+			"level":        level,
+			"title":        event.EventType,
+			"description":  event.Details,
+			"metric":       event.Symbol,
+			"currentValue": math.Abs(event.CurrentDailyLoss),
+			"threshold":    0,
+			"symbol":       event.Symbol,
+			"timestamp":    event.Timestamp.Format(time.RFC3339),
+		}
+	}
+
 	response := map[string]interface{}{
-		"count":  len(events),
-		"alerts": events,
+		"count":  len(alerts),
+		"alerts": alerts,
 	}
 
 	WriteJSON(w, http.StatusOK, response)

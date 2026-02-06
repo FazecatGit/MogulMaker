@@ -1,5 +1,4 @@
 .env
-to do list.txt
 plans
 node_modules
 dist/
@@ -8,4 +7,3 @@ dist/
 *.log
 .DS_Store
 .vscode/
-.idea/

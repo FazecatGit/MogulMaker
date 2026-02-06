@@ -311,6 +311,36 @@ func (tm *Monitor) calculateStatsFromTrades(trades []database.GetAllTradesRow) *
 	return stats
 }
 
+// UpdatePositionAlerts records CRITICAL positions as risk events (called from API endpoints)
+func (tm *Monitor) UpdatePositionAlerts() {
+	// Sync with Alpaca first
+	if tm.positionManager != nil {
+		ctx := context.Background()
+		if err := tm.positionManager.SyncFromAlpaca(ctx); err != nil {
+			log.Printf("Warning: Could not sync positions from Alpaca: %v\n", err)
+		}
+	}
+
+	monitors := tm.GetPositionMonitors()
+
+	for _, m := range monitors {
+		if m.AlertLevel == "CRITICAL" {
+			// Record CRITICAL position as risk event
+			if tm.riskManager != nil {
+				tm.riskManager.RecordCriticalPosition(&risk.Event{
+					Timestamp:           time.Now(),
+					EventType:           "POSITION_CRITICAL",
+					Severity:            "CRITICAL",
+					Symbol:              m.Symbol,
+					Details:             fmt.Sprintf("Position in CRITICAL status: %s %.2f%% loss. Entry: $%.2f, Current: $%.2f", m.Direction, m.UnrealizedPnLPercent, m.EntryPrice, m.CurrentPrice),
+					CurrentAccountValue: 0,
+					CurrentDailyLoss:    m.UnrealizedPnL,
+				})
+			}
+		}
+	}
+}
+
 func (tm *Monitor) PrintOpenPositions() {
 	// Sync with Alpaca first
 	if tm.positionManager != nil {
@@ -353,6 +383,19 @@ func (tm *Monitor) PrintOpenPositions() {
 
 		if m.AlertLevel == "CRITICAL" {
 			criticalPositions = append(criticalPositions, m.Symbol)
+
+			// Record CRITICAL position as risk event
+			if tm.riskManager != nil {
+				tm.riskManager.RecordCriticalPosition(&risk.Event{
+					Timestamp:           time.Now(),
+					EventType:           "POSITION_CRITICAL",
+					Severity:            "CRITICAL",
+					Symbol:              m.Symbol,
+					Details:             fmt.Sprintf("Position in CRITICAL status: %s %.2f%% loss. Entry: $%.2f, Current: $%.2f", m.Direction, m.UnrealizedPnLPercent, m.EntryPrice, m.CurrentPrice),
+					CurrentAccountValue: 0, // Will be set by risk manager if needed
+					CurrentDailyLoss:    m.UnrealizedPnL,
+				})
+			}
 		}
 	}
 
