@@ -48,6 +48,11 @@ func (api *API) HandleGetPositions(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Ensure positions is never nil
+	if alpacaPositions == nil {
+		alpacaPositions = []alpaca.Position{}
+	}
+
 	pendingOrders, err := api.AlpacaClient.GetOrders(alpaca.GetOrdersRequest{
 		Status: "open",
 		Limit:  100,
@@ -58,6 +63,11 @@ func (api *API) HandleGetPositions(w http.ResponseWriter, r *http.Request) {
 		pendingOrders = []alpaca.Order{}
 	} else {
 		log.Printf("Found %d pending orders", len(pendingOrders))
+	}
+
+	// Ensure pending orders is never nil
+	if pendingOrders == nil {
+		pendingOrders = []alpaca.Order{}
 	}
 
 	response := map[string]interface{}{
@@ -74,6 +84,7 @@ func (api *API) HandleGetPositions(w http.ResponseWriter, r *http.Request) {
 
 func (api *API) HandleGetRiskStatus(w http.ResponseWriter, r *http.Request) {
 	if api.RiskManager == nil {
+		log.Printf("Error: RiskManager is nil")
 		WriteError(w, http.StatusInternalServerError, "Risk manager not initialized")
 		return
 	}
@@ -85,6 +96,8 @@ func (api *API) HandleGetRiskStatus(w http.ResponseWriter, r *http.Request) {
 		WriteError(w, http.StatusInternalServerError, "Failed to fetch account data")
 		return
 	}
+
+	log.Printf("Account fetched successfully: Portfolio Value: %v, Cash: %v", account.PortfolioValue, account.Cash)
 
 	// Get open positions from Alpaca
 	alpacaPositions, err := api.AlpacaClient.GetPositions()
@@ -101,8 +114,23 @@ func (api *API) HandleGetRiskStatus(w http.ResponseWriter, r *http.Request) {
 
 	// Calculate total unrealized P&L
 	totalUnrealizedPnL := 0.0
+	largestPositionValue := 0.0
 	for _, pos := range alpacaPositions {
 		totalUnrealizedPnL += pos.UnrealizedPL.InexactFloat64()
+
+		// Calculate position market value
+		qty, _ := pos.Qty.Float64()
+		currentPrice := pos.CurrentPrice.InexactFloat64()
+		positionValue := qty * currentPrice
+		if positionValue > largestPositionValue {
+			largestPositionValue = positionValue
+		}
+	}
+
+	// Calculate largest position as percentage of portfolio
+	largestPositionPercent := 0.0
+	if portfolioValue > 0 {
+		largestPositionPercent = (largestPositionValue / portfolioValue) * 100
 	}
 
 	// Get daily loss from risk manager
@@ -159,20 +187,21 @@ func (api *API) HandleGetRiskStatus(w http.ResponseWriter, r *http.Request) {
 	}
 
 	riskStatus := map[string]interface{}{
-		"enabled":              true,
-		"account_balance":      accountBalance,
-		"portfolio_value":      portfolioValue,
-		"buying_power":         buyingPower,
-		"day_trading_bp":       dayTradingBuyingPower,
-		"daily_loss_percent":   dailyLoss,
-		"daily_loss_limit_hit": isDailyLimitHit,
-		"total_unrealized_pnl": totalUnrealizedPnL,
-		"portfolio_risk_pct":   portfolioRisk,
-		"status":               status,
-		"open_positions":       positionCount,
-		"position_limit":       positionLimit,
-		"positions":            positions,
-		"timestamp":            time.Now().Unix(),
+		"enabled":                  true,
+		"account_balance":          accountBalance,
+		"portfolio_value":          portfolioValue,
+		"buying_power":             buyingPower,
+		"day_trading_bp":           dayTradingBuyingPower,
+		"daily_loss_percent":       dailyLoss,
+		"is_daily_limit_hit":       isDailyLimitHit,
+		"total_unrealized_pnl":     totalUnrealizedPnL,
+		"portfolio_risk_percent":   portfolioRisk,
+		"largest_position_percent": largestPositionPercent,
+		"status":                   status,
+		"position_count":           positionCount,
+		"position_limit":           positionLimit,
+		"positions":                positions,
+		"timestamp":                time.Now().Unix(),
 	}
 
 	WriteJSON(w, http.StatusOK, riskStatus)
@@ -784,13 +813,10 @@ func (api *API) HandleRiskAlerts(w http.ResponseWriter, r *http.Request) {
 
 	events := api.RiskManager.GetRiskEvents(limit)
 
-	// Transform events to match frontend interface
 	alerts := make([]map[string]interface{}, len(events))
 	for i, event := range events {
-		// Generate a simple ID from symbol and timestamp
 		alertID := fmt.Sprintf("%s-%d", event.Symbol, event.Timestamp.Unix())
 
-		// Determine alert level from severity
 		level := "info"
 		if event.Severity == "CRITICAL" {
 			level = "critical"
@@ -1341,7 +1367,7 @@ func (api *API) HandleAnalyzeSymbol(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	bars, err := datafeed.GetAlpacaBars(symbol, "1Day", 100, "")
+	bars, err := datafeed.GetAlpacaBars(symbol, "1Day", 250, "")
 	if err != nil {
 		log.Printf("Error fetching bars for %s: %v", symbol, err)
 		WriteError(w, http.StatusInternalServerError, "Failed to fetch market data")
@@ -1454,6 +1480,41 @@ func (api *API) HandleAnalyzeSymbol(w http.ResponseWriter, r *http.Request) {
 	// Calculate trading recommendation
 	tradingRec := calculateTradingRecommendation(currentPrice, currentRSI, support, resistance, trend, bestP)
 
+	// Build historical bars data
+	historicalBars := make([]map[string]interface{}, len(bars))
+	for i, bar := range bars {
+		rsiVal := 0.0
+		if i < len(rsiValues) {
+			rsiVal = rsiValues[i]
+		}
+		atrVal := 0.0
+		if i < len(atrValues) {
+			atrVal = atrValues[i]
+		}
+
+		// Parse timestamp string to Unix timestamp
+		timestamp := int64(0)
+		if t, err := time.Parse(time.RFC3339, bar.Timestamp); err == nil {
+			timestamp = t.Unix()
+		}
+
+		historicalBars[i] = map[string]interface{}{
+			"open":      bar.Open,
+			"high":      bar.High,
+			"low":       bar.Low,
+			"close":     bar.Close,
+			"volume":    bar.Volume,
+			"timestamp": timestamp,
+			"rsi":       rsiVal,
+			"atr":       atrVal,
+		}
+	}
+
+	// Reverse bars so oldest dates appear on left, newest on right
+	for i, j := 0, len(historicalBars)-1; i < j; i, j = i+1, j-1 {
+		historicalBars[i], historicalBars[j] = historicalBars[j], historicalBars[i]
+	}
+
 	response := map[string]interface{}{
 		"symbol":                 symbol,
 		"current_price":          currentPrice,
@@ -1471,6 +1532,7 @@ func (api *API) HandleAnalyzeSymbol(w http.ResponseWriter, r *http.Request) {
 		"chart_pattern":          bestPattern,
 		"multi_timeframe":        multiTimeframe,
 		"trading_recommendation": tradingRec,
+		"historical_bars":        historicalBars,
 	}
 
 	WriteJSON(w, http.StatusOK, response)

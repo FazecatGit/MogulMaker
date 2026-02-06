@@ -21,7 +21,6 @@ type Monitor struct {
 	queries         *database.Queries
 }
 
-// comprehensive record of a trade
 type TradeRecord struct {
 	ID                 string
 	Symbol             string
@@ -41,7 +40,6 @@ type TradeRecord struct {
 	Tags               []string
 }
 
-// overall stats for the trading portfolio
 type PortfolioStats struct {
 	TotalTrades           int
 	WinningTrades         int
@@ -66,7 +64,7 @@ type PortfolioStats struct {
 	LastUpdated           time.Time
 }
 
-// represents real-time position monitoring data
+
 type PositionMonitor struct {
 	Symbol               string
 	Direction            string
@@ -126,7 +124,6 @@ func NewMonitor(positionManager *position.PositionManager, riskManager *risk.Man
 
 // REPORTING
 
-// prints formatted statistics report by calculating from database
 func (tm *Monitor) PrintStatsReport() {
 	if tm.queries == nil {
 		fmt.Println("Database queries not available")
@@ -141,7 +138,7 @@ func (tm *Monitor) PrintStatsReport() {
 	}
 
 	if len(trades) == 0 {
-		fmt.Println("\n📊 No trades found in database")
+		fmt.Println("\nNo trades found in database")
 		return
 	}
 
@@ -514,7 +511,7 @@ func (tm *Monitor) CheckPortfolioRiskAndClose() {
 	}
 }
 
-// displays recent trades from database
+
 func (tm *Monitor) PrintTradeHistory() {
 	if tm.queries == nil {
 		fmt.Println(" Database queries not available")
@@ -552,7 +549,6 @@ func (tm *Monitor) PrintTradeHistory() {
 			createdAt = trade.CreatedAt.Time.Format("2006-01-02 15:04")
 		}
 
-		// Print each trade row
 		fmt.Printf("%-6d %-8s %-6s %-10s $%-9s $%-11s %-15s %-20s\n",
 			trade.ID, trade.Symbol, trade.Side, trade.Quantity,
 			trade.Price, trade.TotalValue, status, createdAt)
@@ -561,10 +557,9 @@ func (tm *Monitor) PrintTradeHistory() {
 	fmt.Println(formatting.Separator(width) + "\n")
 }
 
-// displays risk events and alerts from the risk manager
 func (tm *Monitor) PrintRiskEvents() {
 	if tm.riskManager == nil {
-		fmt.Println("⚠️  Risk Manager not available")
+		fmt.Println("Risk Manager not available")
 		return
 	}
 
@@ -573,14 +568,14 @@ func (tm *Monitor) PrintRiskEvents() {
 	fmt.Println("RISK EVENTS & ALERTS")
 	fmt.Println(formatting.Separator(width))
 
-	// Get recent risk events from risk manager
+
 	events := tm.riskManager.GetRecentEvents()
 
 	if len(events) == 0 {
-		fmt.Println("✅ No recent risk events")
+		fmt.Println("No recent risk events")
 	} else {
 		for _, event := range events {
-			fmt.Printf("⚠️  %s\n", event)
+			fmt.Printf("%s\n", event)
 		}
 	}
 

@@ -59,18 +59,31 @@ export function usePositionsTable() {
   return useQuery<PositionsResponse>({
     queryKey: ['positions-detailed'],
     queryFn: async () => {
-      const response = await apiClient.get('/positions');
-      const data = response?.data || response;
-      
-      console.log('Positions Response:', data);
-      
-      return {
-        count: data?.count || 0,
-        positions: data?.positions || [],
-        pending_orders: data?.pending_orders || [],
-        risk_status: data?.risk_status || { enabled: true },
-        timestamp: data?.timestamp || Date.now(),
-      };
+      try {
+        const response = await apiClient.get('/positions');
+        const data = response?.data || response;
+        
+        console.log('=== Positions Hook ===');
+        console.log('Raw Response:', response);
+        console.log('Parsed Data:', data);
+        console.log('Positions Array:', data?.positions);
+        console.log('Positions Count:', data?.positions?.length || 0);
+        
+        const result = {
+          count: data?.count || data?.positions?.length || 0,
+          positions: Array.isArray(data?.positions) ? data.positions : [],
+          pending_orders: Array.isArray(data?.pending_orders) ? data.pending_orders : [],
+          risk_status: data?.risk_status || { enabled: true },
+          timestamp: data?.timestamp || Date.now(),
+        };
+        
+        console.log('Final Result:', result);
+        
+        return result;
+      } catch (error) {
+        console.error('Failed to fetch positions:', error);
+        throw error;
+      }
     },
     staleTime: 1000 * 60 * 5, // 5 minutes
     refetchInterval: 1000 * 30, // 30 seconds
