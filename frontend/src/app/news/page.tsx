@@ -3,6 +3,9 @@
 import { useState, useEffect } from 'react';
 import { AlertCircle, TrendingUp, TrendingDown, Calendar, ExternalLink, RefreshCw, Zap } from 'lucide-react';
 import PageHeader from '@/components/PageHeader';
+import SearchInput from '@/components/ui/SearchInput';
+import SkeletonLoader from '@/components/ui/SkeletonLoader';
+import StatusAlert from '@/components/ui/StatusAlert';
 import { formatTime } from '@/lib/formatters';
 import apiClient from '@/lib/apiClient';
 
@@ -108,12 +111,11 @@ export default function NewsPage() {
           {/* Symbol Filter */}
           <div>
             <label className="block text-slate-300 text-sm font-semibold mb-2">Filter by Symbol</label>
-            <input
-              type="text"
-              placeholder="e.g., TSLA, AAPL"
+            <SearchInput
               value={searchSymbol}
-              onChange={(e) => setSearchSymbol(e.target.value)}
-              className="w-full px-4 py-2 bg-slate-700 border border-slate-600 rounded text-white placeholder-slate-400 focus:outline-none focus:border-blue-500"
+              onChange={setSearchSymbol}
+              placeholder="e.g., TSLA, AAPL"
+              className="w-full"
             />
           </div>
 
@@ -141,22 +143,12 @@ export default function NewsPage() {
 
       {/* Error State */}
       {error && !newsData.length && (
-        <div className="bg-red-500/20 border border-red-500/50 rounded-lg p-4 text-red-400">
-          <p>{error}</p>
-        </div>
+        <StatusAlert message={error} variant="error" />
       )}
 
       {/* Loading State */}
       {isLoading && !newsData.length && (
-        <div className="space-y-4">
-          {[1, 2, 3].map((i) => (
-            <div key={i} className="bg-slate-800 rounded-lg border border-slate-700 p-4 animate-pulse">
-              <div className="h-5 bg-slate-700 rounded w-3/4 mb-3"></div>
-              <div className="h-4 bg-slate-700 rounded w-full mb-2"></div>
-              <div className="h-4 bg-slate-700 rounded w-5/6"></div>
-            </div>
-          ))}
-        </div>
+        <SkeletonLoader count={3} height="h-20" withContent />
       )}
 
       {/* Empty State */}

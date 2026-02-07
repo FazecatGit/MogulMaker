@@ -257,6 +257,7 @@ export default function AnalyzerPage() {
                   data={analysisData.historical_bars}
                   title={`Price History (${analysisData.historical_bars.length} days)`}
                   daysLabel={`${analysisData.historical_bars.length} trading days`}
+                  showVolume={true}
                   height={400}
                 />
 

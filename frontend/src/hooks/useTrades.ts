@@ -63,7 +63,7 @@ export function useTrades() {
         timestamp: data?.timestamp || Date.now(),
       };
     },
-    staleTime: 1000 * 60 * 5, // 5 minutes
-    refetchInterval: 1000 * 30, // 30 seconds
+    staleTime: 1000 * 10, // 10 seconds - trades data can change frequently
+    refetchInterval: 1000 * 10, // 10 seconds - faster updates for recent trades
   });
 }

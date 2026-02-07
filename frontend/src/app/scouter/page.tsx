@@ -4,7 +4,13 @@ import { useState, useEffect, useRef } from 'react';
 import { AlertCircle, TrendingUp, RefreshCw, Target, Zap, Star, Plus, X, Play } from 'lucide-react';
 import { useScout } from '@/hooks/useScout';
 import PageHeader from '@/components/PageHeader';
+import Card from '@/components/ui/Card';
+import SelectInput from '@/components/ui/SelectInput';
+import SkeletonLoader from '@/components/ui/SkeletonLoader';
+import StatusAlert from '@/components/ui/StatusAlert';
+import StatCard from '@/components/ui/StatCard';
 import ResponsiveTable from '@/components/Tables/ResponsiveTable';
+import { getScoreBadgeColor } from '@/lib/colorHelpers';
 import apiClient from '@/lib/apiClient';
 
 export default function ScouterPage() {
@@ -40,11 +46,7 @@ export default function ScouterPage() {
     }
   }, [data?.opportunities, offset]);
 
-  const getScoreBadgeColor = (score: number) => {
-    if (score >= 8) return 'bg-green-500/20 border-green-500/50 text-green-400 border';
-    if (score >= 6) return 'bg-yellow-500/20 border-yellow-500/50 text-yellow-400 border';
-    return 'bg-red-500/20 border-red-500/50 text-red-400 border';
-  };
+
 
   const handleStartScan = () => {
     console.log('[ScouterPage] Starting fresh scan with score:', minScoreSlider);
@@ -165,25 +167,9 @@ export default function ScouterPage() {
   if (isLoading && allOpportunities.length === 0) {
     return (
       <div className="space-y-6">
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold text-white mb-2">Stock Scouter</h1>
-          <p className="text-slate-400">Scanning stocks...</p>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-          {[1, 2, 3].map((i) => (
-            <div key={i} className="bg-slate-800 rounded-lg p-4 border border-slate-700 animate-pulse h-24" />
-          ))}
-        </div>
-
-        <div className="space-y-2">
-          {[1, 2, 3, 4, 5].map((i) => (
-            <div
-              key={i}
-              className="bg-slate-800 rounded-lg h-20 animate-pulse border border-slate-700"
-            />
-          ))}
-        </div>
+        <PageHeader title="Stock Scouter" description="Scanning stocks..." />
+        <SkeletonLoader count={3} height="h-24" />
+        <SkeletonLoader count={5} height="h-20" />
       </div>
     );
   }
@@ -191,40 +177,20 @@ export default function ScouterPage() {
   // Error state
   if (isError) {
     console.error('[ScouterPage] Error state:', { error, isError });
-    
     const errorMessage = error instanceof Error ? error.message : JSON.stringify(error);
     const errorStatus = (error as any)?.status ? ` (${(error as any).status})` : '';
     const errorCode = (error as any)?.code ? ` [${(error as any).code}]` : '';
     
     return (
       <div className="space-y-6">
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold text-white mb-2">Stock Scouter</h1>
-          <p className="text-slate-400">AI-powered stock screening and opportunity detection</p>
-        </div>
-
-        <div className="bg-red-900/20 border border-red-700 rounded-lg p-6 space-y-3">
-          <div className="flex items-center gap-3">
-            <AlertCircle className="w-5 h-5 text-red-400 flex-shrink-0" />
-            <div>
-              <p className="text-red-400 font-semibold">Failed to scan stocks</p>
-              <p className="text-red-300 text-sm">
-                {errorMessage}{errorStatus}{errorCode}
-              </p>
-            </div>
-          </div>
-          
-          <div className="text-xs text-red-400 mt-2 p-3 bg-red-950/30 rounded font-mono">
-            Check browser console for more details
-          </div>
-          
-          <button
-            onClick={() => setScanTriggered(false)}
-            className="mt-4 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded text-sm font-semibold"
-          >
-            Try Again
-          </button>
-        </div>
+        <PageHeader title="Stock Scouter" description="AI-powered stock screening and opportunity detection" />
+        <StatusAlert message={`Failed to scan stocks: ${errorMessage}${errorStatus}${errorCode}`} variant="error" />
+        <button
+          onClick={() => setScanTriggered(false)}
+          className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded text-sm font-semibold"
+        >
+          Try Again
+        </button>
       </div>
     );
   }
@@ -271,17 +237,18 @@ export default function ScouterPage() {
 
               <div className="border-t border-slate-700 pt-4">
                 <label className="block text-slate-300 text-sm font-semibold mb-3">Limit</label>
-                <select
-                  value={limit}
-                  onChange={(e) => setLimit(parseInt(e.target.value))}
-                  className="w-full bg-slate-700 text-white rounded px-3 py-2 border border-slate-600 focus:border-blue-500 focus:outline-none text-sm"
-                >
-                  <option value="10">10 stocks</option>
-                  <option value="15">15 stocks</option>
-                  <option value="25">25 stocks</option>
-                  <option value="50">50 stocks</option>
-                  <option value="100">100 stocks</option>
-                </select>
+                <SelectInput
+                  value={limit.toString()}
+                  onChange={(v) => setLimit(parseInt(v))}
+                  options={[
+                    { value: '10', label: '10 stocks' },
+                    { value: '15', label: '15 stocks' },
+                    { value: '25', label: '25 stocks' },
+                    { value: '50', label: '50 stocks' },
+                    { value: '100', label: '100 stocks' },
+                  ]}
+                  className="w-full"
+                />
               </div>
 
               <button
@@ -480,5 +447,3 @@ export default function ScouterPage() {
     </div>
   );
 }
-
-

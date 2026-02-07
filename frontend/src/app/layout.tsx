@@ -4,6 +4,7 @@ import Providers from '@/components/providers/Providers';
 import Header from '@/components/layout/Header';
 import Sidebar from '@/components/layout/Sidebar';
 import Footer from '@/components/layout/Footer';
+import NotificationToast from '@/components/NotificationToast';
 import './globals.css';
 
 /**
@@ -37,6 +38,9 @@ export default function RootLayout({ children }: { children: ReactNode }) {
       <body style={{ backgroundColor: 'var(--background)', color: 'var(--foreground)' }} className="antialiased">
         {/* Providers component wraps everything with TanStack Query */}
         <Providers>
+          {/* Global Notification Toast */}
+          <NotificationToast />
+          
           <div className="flex h-screen">
             {/* Sidebar - full height, fixed width */}
             <Sidebar />

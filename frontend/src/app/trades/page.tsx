@@ -1,13 +1,19 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { AlertCircle, TrendingUp, TrendingDown, Clock, Search, ArrowUp, ArrowDown } from 'lucide-react';
+import { TrendingUp, TrendingDown, Clock, Search, ArrowUp, ArrowDown, RefreshCw } from 'lucide-react';
 import { useTrades } from '@/hooks/useTrades';
 import { useTradeStatistics } from '@/hooks/useTradeStatistics';
+import { useGlobalStore } from '@/store/useGlobalStore';
 import PageHeader from '@/components/PageHeader';
 import Button from '@/components/ui/Button';
+import Card from '@/components/ui/Card';
 import StatCard from '@/components/ui/StatCard';
 import ErrorAlert from '@/components/ui/ErrorAlert';
+import SearchInput from '@/components/ui/SearchInput';
+import SelectInput from '@/components/ui/SelectInput';
+import SkeletonLoader from '@/components/ui/SkeletonLoader';
+import PendingOrdersAlert from '@/components/ui/PendingOrdersAlert';
 import ResponsiveTable from '@/components/Tables/ResponsiveTable';
 import apiClient from '@/lib/apiClient';
 import { formatCurrency, formatPercent, formatDuration } from '@/lib/formatters';
@@ -34,15 +40,15 @@ interface PendingOrder {
 }
 
 export default function TradesPage() {
-  const { data, isLoading, error, isError } = useTrades();
+  const { data, isLoading, error, isError, refetch } = useTrades();
   const { data: statsData, isLoading: statsLoading } = useTradeStatistics();
+  const addNotification = useGlobalStore((state) => state.addNotification);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState<'all' | 'open' | 'closed'>('all');
   const [sortBy, setSortBy] = useState<'recent' | 'pnl' | 'duration'>('recent');
   const [tradeSymbol, setTradeSymbol] = useState('');
   const [tradeQuantity, setTradeQuantity] = useState(1);
   const [tradingLoading, setTradingLoading] = useState(false);
-  const [tradingMessage, setTradingMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [positions, setPositions] = useState<Position[]>([]);
   const [pendingOrders, setPendingOrders] = useState<PendingOrder[]>([]);
   const [recentTradeExecution, setRecentTradeExecution] = useState(false);
@@ -113,15 +119,7 @@ export default function TradesPage() {
       <div className="w-full space-y-8">
         <PageHeader title="Trade History" description="View and analyze your trading history" />
 
-        {/* Skeleton loaders */}
-        <div className="space-y-2">
-          {[1, 2, 3, 4, 5].map((i) => (
-            <div
-              key={i}
-              className="bg-slate-800 rounded-lg h-16 animate-pulse border border-slate-700"
-            />
-          ))}
-        </div>
+        <SkeletonLoader count={5} />
       </div>
     );
   }
@@ -146,7 +144,11 @@ export default function TradesPage() {
 
   const handleLongTrade = async () => {
     if (!tradeSymbol.trim()) {
-      setTradingMessage({ type: 'error', text: 'Please enter a symbol' });
+      addNotification({
+        type: 'error',
+        title: 'Invalid Trade',
+        message: 'Please enter a symbol',
+      });
       return;
     }
     
@@ -176,7 +178,6 @@ export default function TradesPage() {
     }
     
     setTradingLoading(true);
-    setTradingMessage(null);
     setRecentTradeExecution(false);
     try {
       await apiClient.post('/execute-trade', {
@@ -184,14 +185,24 @@ export default function TradesPage() {
         side: 'buy',
         quantity: tradeQuantity,
       });
-      setTradingMessage({ type: 'success', text: `Long trade executed for ${symbol}` });
+      addNotification({
+        type: 'success',
+        title: 'Trade Executed',
+        message: `Long trade executed for ${symbol} (${tradeQuantity} shares)`,
+      });
       setRecentTradeExecution(true);
       setTradeSymbol('');
       setTradeQuantity(1);
+      // Refresh trades data immediately
+      await refetch();
       // Remove animation after 3 seconds
       setTimeout(() => setRecentTradeExecution(false), 3000);
     } catch (err) {
-      setTradingMessage({ type: 'error', text: 'Failed to execute long trade' });
+      addNotification({
+        type: 'error',
+        title: 'Trade Failed',
+        message: 'Failed to execute long trade. Please try again.',
+      });
     } finally {
       setTradingLoading(false);
     }
@@ -199,11 +210,14 @@ export default function TradesPage() {
 
   const handleShortTrade = async () => {
     if (!tradeSymbol.trim()) {
-      setTradingMessage({ type: 'error', text: 'Please enter a symbol' });
+      addNotification({
+        type: 'error',
+        title: 'Invalid Trade',
+        message: 'Please enter a symbol',
+      });
       return;
     }
     setTradingLoading(true);
-    setTradingMessage(null);
     setRecentTradeExecution(false);
     const symbol = tradeSymbol.trim().toUpperCase();
     try {
@@ -212,14 +226,24 @@ export default function TradesPage() {
         side: 'sell',
         quantity: tradeQuantity,
       });
-      setTradingMessage({ type: 'success', text: `Short trade executed for ${symbol}` });
+      addNotification({
+        type: 'success',
+        title: 'Trade Executed',
+        message: `Short trade executed for ${symbol} (${tradeQuantity} shares)`,
+      });
       setRecentTradeExecution(true);
       setTradeSymbol('');
       setTradeQuantity(1);
+      // Refresh trades data immediately
+      await refetch();
       // Remove animation after 3 seconds
       setTimeout(() => setRecentTradeExecution(false), 3000);
     } catch (err) {
-      setTradingMessage({ type: 'error', text: 'Failed to execute short trade' });
+      addNotification({
+        type: 'error',
+        title: 'Trade Failed',
+        message: 'Failed to execute short trade. Please try again.',
+      });
     } finally {
       setTradingLoading(false);
     }
@@ -228,70 +252,31 @@ export default function TradesPage() {
   return (
     <div className="w-full space-y-8">
       {/* Header */}
-      <PageHeader 
-        title="Trades" 
-        description={`${trades.length} trade${trades.length !== 1 ? 's' : ''} • ${openTrades} open • ${closedTrades} closed${pendingOrders.length > 0 ? ` • ${pendingOrders.length} pending order${pendingOrders.length !== 1 ? 's' : ''}` : ''}`} 
-      />
-
-      {/* Pending Orders Alert */}
-      {pendingOrders.length > 0 && (
-        <div className="bg-yellow-500/20 border-2 border-yellow-500 rounded-lg p-6 shadow-lg">
-          <div className="flex items-start gap-4">
-            <div className="bg-yellow-500 rounded-full p-2">
-              <AlertCircle className="w-6 h-6 text-slate-900 flex-shrink-0" />
-            </div>
-            <div className="flex-1">
-              <p className="text-yellow-400 font-bold text-lg mb-3">
-                Pending Orders ({pendingOrders.length})
-              </p>
-              <div className="space-y-2">
-                {pendingOrders.map((order) => (
-                  <div key={order.id} className="bg-slate-800/50 rounded px-3 py-2 border border-yellow-500/30">
-                    <span className="font-bold text-yellow-300 text-base">{order.symbol}</span>
-                    {' • '}
-                    <span className="capitalize text-white font-medium">{order.side}</span>
-                    {' • '}
-                    <span className="text-white">{parseFloat(order.qty)} shares</span>
-                    {' • '}
-                    <span className="text-yellow-400 font-semibold uppercase text-xs">{order.status}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
+      <div className="space-y-3">
+        <div className="flex items-start justify-between gap-4">
+          <PageHeader 
+            title="Trades" 
+            description={`${trades.length} trade${trades.length !== 1 ? 's' : ''} • ${openTrades} open • ${closedTrades} closed${pendingOrders.length > 0 ? ` • ${pendingOrders.length} pending order${pendingOrders.length !== 1 ? 's' : ''}` : ''}`} 
+          />
+          <Button
+            variant="secondary"
+            icon={<RefreshCw className="w-4 h-4" />}
+            onClick={() => refetch()}
+          >
+            Refresh
+          </Button>
         </div>
-      )}
+      </div>
+
+      <PendingOrdersAlert orders={pendingOrders} />
 
       {/* Trade Statistics */}
       {statsData && (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          <div className="bg-slate-800 rounded-lg border border-slate-700 p-4">
-            <p className="text-slate-400 text-sm mb-1">Win Rate</p>
-            <p className="text-2xl font-bold text-white">{statsData.win_rate.toFixed(1)}%</p>
-            <p className="text-xs text-slate-500 mt-1">{statsData.winning_trades}W / {statsData.losing_trades}L</p>
-          </div>
-
-          <div className={`bg-slate-800 rounded-lg border border-slate-700 p-4 ${statsData.total_pnl >= 0 ? 'border-green-600/30' : 'border-red-600/30'}`}>
-            <p className="text-slate-400 text-sm mb-1">Realized P&L</p>
-            <p className={`text-2xl font-bold ${statsData.total_pnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-              ${statsData.total_pnl.toFixed(2)}
-            </p>
-            <p className="text-xs text-slate-500 mt-1">Avg: ${statsData.avg_pnl.toFixed(2)}</p>
-          </div>
-
-          <div className={`bg-slate-800 rounded-lg border border-slate-700 p-4 ${statsData.open_pnl >= 0 ? 'border-green-600/30' : 'border-red-600/30'}`}>
-            <p className="text-slate-400 text-sm mb-1">Unrealized P&L</p>
-            <p className={`text-2xl font-bold ${statsData.open_pnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-              ${statsData.open_pnl.toFixed(2)}
-            </p>
-            <p className="text-xs text-slate-500 mt-1">{statsData.open_positions} open position(s)</p>
-          </div>
-
-          <div className="bg-slate-800 rounded-lg border border-slate-700 p-4">
-            <p className="text-slate-400 text-sm mb-1">Sharpe Ratio</p>
-            <p className="text-2xl font-bold text-white">{statsData.sharpe_ratio.toFixed(2)}</p>
-            <p className="text-xs text-slate-500 mt-1">Win: ${statsData.largest_win.toFixed(2)} / Loss: ${Math.abs(statsData.largest_loss).toFixed(2)}</p>
-          </div>
+          <StatCard label="Win Rate" value={`${statsData.win_rate.toFixed(1)}%`} subtext={`${statsData.winning_trades}W / ${statsData.losing_trades}L`} />
+          <StatCard label="Realized P&L" value={`$${statsData.total_pnl.toFixed(2)}`} subtext={`Avg: $${statsData.avg_pnl.toFixed(2)}`} variant={getStatCardVariant(statsData.total_pnl)} />
+          <StatCard label="Unrealized P&L" value={`$${statsData.open_pnl.toFixed(2)}`} subtext={`${statsData.open_positions} open position(s)`} variant={getStatCardVariant(statsData.open_pnl)} />
+          <StatCard label="Sharpe Ratio" value={statsData.sharpe_ratio.toFixed(2)} subtext={`Win: $${statsData.largest_win.toFixed(2)} / Loss: $${Math.abs(statsData.largest_loss).toFixed(2)}`} />
         </div>
       )}
 
@@ -307,18 +292,6 @@ export default function TradesPage() {
         </h2>
         
         <div className="space-y-4">
-          {tradingMessage && (
-            <div
-              className={`rounded-lg p-4 ${
-                tradingMessage.type === 'success'
-                  ? 'bg-green-900/30 border border-green-600 text-green-400'
-                  : 'bg-red-900/30 border border-red-600 text-red-400'
-              }`}
-            >
-              {tradingMessage.text}
-            </div>
-          )}
-
           <div className="flex flex-col sm:flex-row gap-4">
             <div className="flex-1">
               <label className="block text-slate-300 text-sm font-semibold mb-2">Symbol</label>
@@ -367,36 +340,25 @@ export default function TradesPage() {
       {/* Controls */}
       <div className="bg-slate-800 rounded-lg p-4 border border-slate-700 space-y-4">
         <div className="flex flex-col sm:flex-row gap-4">
-          {/* Search */}
-          <input
-            type="text"
-            placeholder="Search by symbol..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="flex-1 bg-slate-700 text-white placeholder-slate-400 rounded px-4 py-2 border border-slate-600 focus:border-blue-500 focus:outline-none"
-          />
-
-          {/* Status Filter */}
-          <select
+          <SearchInput value={searchTerm} onChange={setSearchTerm} placeholder="Search by symbol..." className="flex-1" />
+          <SelectInput
             value={filterStatus}
-            onChange={(e) => setFilterStatus(e.target.value as any)}
-            className="bg-slate-700 text-white rounded px-4 py-2 border border-slate-600 focus:border-blue-500 focus:outline-none"
-          >
-            <option value="all">All Trades</option>
-            <option value="open">Open</option>
-            <option value="closed">Closed</option>
-          </select>
-
-          {/* Sort */}
-          <select
+            onChange={(v) => setFilterStatus(v as any)}
+            options={[
+              { value: 'all', label: 'All Trades' },
+              { value: 'open', label: 'Open' },
+              { value: 'closed', label: 'Closed' },
+            ]}
+          />
+          <SelectInput
             value={sortBy}
-            onChange={(e) => setSortBy(e.target.value as any)}
-            className="bg-slate-700 text-white rounded px-4 py-2 border border-slate-600 focus:border-blue-500 focus:outline-none"
-          >
-            <option value="recent">Sort by Recent</option>
-            <option value="pnl">Sort by P&L</option>
-            <option value="duration">Sort by Duration</option>
-          </select>
+            onChange={(v) => setSortBy(v as any)}
+            options={[
+              { value: 'recent', label: 'Sort by Recent' },
+              { value: 'pnl', label: 'Sort by P&L' },
+              { value: 'duration', label: 'Sort by Duration' },
+            ]}
+          />
         </div>
       </div>
 
@@ -437,7 +399,18 @@ export default function TradesPage() {
             key: 'exit_price',
             label: 'Exit Price',
             align: 'right',
-            render: (val) => val ? formatCurrency(typeof val === 'number' ? val : parseFloat(val)) : '-',
+            render: (val, trade) => {
+              if (trade.status === 'open') {
+                const position = positionMap.get(trade.symbol);
+                const currentPrice = position?.current_price;
+                return currentPrice ? (
+                  <span className="text-blue-400">{formatCurrency(currentPrice)}</span>
+                ) : (
+                  <span className="text-slate-500">Open</span>
+                );
+              }
+              return val ? formatCurrency(typeof val === 'number' ? val : parseFloat(val)) : <span className="text-yellow-400">Pending</span>;
+            },
           },
           {
             key: 'qty',
@@ -460,12 +433,33 @@ export default function TradesPage() {
             key: 'duration_ms',
             label: 'Duration',
             align: 'center',
-            render: (val) => (
-              <div className="flex items-center justify-center gap-1">
-                <Clock className="w-4 h-4" />
-                {formatDuration((val || 0) / 1000)}
-              </div>
-            ),
+            render: (val, trade) => {
+              if (trade.status === 'open') {
+                const entryTime = new Date(trade.entry_time).getTime();
+                const now = Date.now();
+                const openDuration = Math.floor((now - entryTime) / 1000);
+                return (
+                  <div className="flex items-center justify-center gap-1 text-blue-400">
+                    <Clock className="w-4 h-4" />
+                    {formatDuration(openDuration)} (open)
+                  </div>
+                );
+              }
+              if (!val || val === 0) {
+                return (
+                  <div className="flex items-center justify-center gap-1 text-yellow-400">
+                    <Clock className="w-4 h-4" />
+                    <span className="text-xs">Calculating...</span>
+                  </div>
+                );
+              }
+              return (
+                <div className="flex items-center justify-center gap-1">
+                  <Clock className="w-4 h-4" />
+                  {formatDuration(val / 1000)}
+                </div>
+              );
+            },
           },
           {
             key: 'realized_pl',
@@ -534,24 +528,10 @@ export default function TradesPage() {
 
       {/* Summary */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="bg-slate-800 rounded-lg p-4 border border-slate-700">
-          <p className="text-slate-400 text-sm mb-1">Total Trades</p>
-          <p className="text-2xl font-bold text-white">{trades.length}</p>
-        </div>
-        <div className="bg-slate-800 rounded-lg p-4 border border-slate-700">
-          <p className="text-slate-400 text-sm mb-1">Open Trades</p>
-          <p className="text-2xl font-bold text-blue-400">{openTrades}</p>
-        </div>
-        <div className="bg-slate-800 rounded-lg p-4 border border-slate-700">
-          <p className="text-slate-400 text-sm mb-1">Closed Trades</p>
-          <p className="text-2xl font-bold text-white">{closedTrades}</p>
-        </div>
-        <div className="bg-slate-800 rounded-lg p-4 border border-slate-700">
-          <p className="text-slate-400 text-sm mb-1">Total P&L</p>
-          <p className={`text-2xl font-bold ${totalPnL >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-            {totalPnL >= 0 ? '+' : ''}${Math.abs(totalPnL).toFixed(2)}
-          </p>
-        </div>
+        <StatCard label="Total Trades" value={trades.length.toString()} />
+        <StatCard label="Open Trades" value={openTrades.toString()} variant="neutral" />
+        <StatCard label="Closed Trades" value={closedTrades.toString()} />
+        <StatCard label="Total P&L" value={`${totalPnL >= 0 ? '+' : ''}$${Math.abs(totalPnL).toFixed(2)}`} variant={getStatCardVariant(totalPnL)} />
       </div>
     </div>
   );

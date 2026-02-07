@@ -1,11 +1,15 @@
 'use client';
 
 import { useState } from 'react';
-import { AlertCircle, TrendingUp, TrendingDown, Plus, Minus } from 'lucide-react';
+import { TrendingUp, TrendingDown, Plus, Minus, Radio } from 'lucide-react';
 import PageHeader from '@/components/PageHeader';
 import Button from '@/components/ui/Button';
 import StatCard from '@/components/ui/StatCard';
 import ErrorAlert from '@/components/ui/ErrorAlert';
+import SearchInput from '@/components/ui/SearchInput';
+import SelectInput from '@/components/ui/SelectInput';
+import SkeletonLoader from '@/components/ui/SkeletonLoader';
+import PendingOrdersAlert from '@/components/ui/PendingOrdersAlert';
 import ResponsiveTable from '@/components/Tables/ResponsiveTable';
 import { usePositionsTable, type Position } from '@/hooks/usePositionsTable';
 import apiClient from '@/lib/apiClient';
@@ -111,15 +115,7 @@ export default function PositionsPage() {
           description="View and manage your open positions"
         />
 
-        {/* Skeleton loaders */}
-        <div className="space-y-2">
-          {[1, 2, 3, 4, 5].map((i) => (
-            <div
-              key={i}
-              className="bg-slate-800 rounded-lg h-16 animate-pulse border border-slate-700"
-            />
-          ))}
-        </div>
+        <SkeletonLoader count={5} />
       </div>
     );
   }
@@ -146,62 +142,40 @@ export default function PositionsPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <PageHeader 
-        title="Positions" 
-        description={`${positions.length} open position${positions.length !== 1 ? 's' : ''}${pendingOrders.length > 0 ? ` • ${pendingOrders.length} pending order${pendingOrders.length !== 1 ? 's' : ''}` : ''}`}
-      />
-
-      {/* Pending Orders Alert */}
-      {pendingOrders.length > 0 && (
-        <div className="bg-yellow-900/10 border-2 border-yellow-500 rounded-lg p-6 shadow-lg">
-          <div className="flex items-start gap-4">
-            <div className="bg-yellow-500 rounded-full p-2">
-              <AlertCircle className="w-6 h-6 text-slate-900 flex-shrink-0" />
-            </div>
-            <div className="flex-1">
-              <p className="text-yellow-400 font-bold text-lg mb-3">
-                Pending Orders ({pendingOrders.length})
-              </p>
-              <div className="space-y-2">
-                {pendingOrders.map((order) => (
-                  <div key={order.id} className="bg-slate-800/50 rounded px-3 py-2 border border-yellow-500/30">
-                    <span className="font-bold text-yellow-300 text-base">{order.symbol}</span>
-                    {' • '}
-                    <span className="capitalize text-white font-medium">{order.side}</span>
-                    {' • '}
-                    <span className="text-white">{parseFloat(order.qty)} shares</span>
-                    {' • '}
-                    <span className="text-yellow-400 font-semibold uppercase text-xs">{order.status}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
+      <div className="space-y-3">
+        <div className="flex items-start justify-between gap-4">
+          <PageHeader 
+            title="Positions" 
+            description={`${positions.length} open position${positions.length !== 1 ? 's' : ''}${pendingOrders.length > 0 ? ` • ${pendingOrders.length} pending order${pendingOrders.length !== 1 ? 's' : ''}` : ''}`}
+          />
+          <div className="flex items-center gap-2 bg-green-900/20 border border-green-700 rounded-full px-3 py-1.5 shrink-0">
+            <Radio className="w-3 h-3 text-green-400 animate-pulse" />
+            <span className="text-green-400 text-sm font-medium">Live Updates</span>
+            <span className="text-green-300/60 text-xs">(5s)</span>
           </div>
         </div>
-      )}
+      </div>
+
+      <PendingOrdersAlert orders={pendingOrders} />
 
       {/* Controls */}
       <div className="bg-slate-800 rounded-lg p-4 border border-slate-700 space-y-4">
         <div className="flex flex-col sm:flex-row gap-4">
-          {/* Search */}
-          <input
-            type="text"
-            placeholder="Search by symbol..."
+          <SearchInput
             value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="flex-1 bg-slate-700 text-white placeholder-slate-400 rounded px-4 py-2 border border-slate-600 focus:border-blue-500 focus:outline-none"
+            onChange={setSearchTerm}
+            placeholder="Search by symbol..."
+            className="flex-1"
           />
-
-          {/* Sort */}
-          <select
+          <SelectInput
             value={sortBy}
-            onChange={(e) => setSortBy(e.target.value as any)}
-            className="bg-slate-700 text-white rounded px-4 py-2 border border-slate-600 focus:border-blue-500 focus:outline-none"
-          >
-            <option value="symbol">Sort by Symbol</option>
-            <option value="pnl">Sort by P&L</option>
-            <option value="value">Sort by Value</option>
-          </select>
+            onChange={(v) => setSortBy(v as any)}
+            options={[
+              { value: 'symbol', label: 'Sort by Symbol' },
+              { value: 'pnl', label: 'Sort by P&L' },
+              { value: 'value', label: 'Sort by Value' },
+            ]}
+          />
         </div>
       </div>
 

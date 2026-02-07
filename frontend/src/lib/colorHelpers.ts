@@ -86,3 +86,21 @@ export const getStatCardVariant = (value: number | null | undefined): 'positive'
   if (value < 0) return 'negative';
   return 'neutral';
 };
+
+/**
+ * Get badge color classes for score values (0-10 scale)
+ * Used in watchlist and scouter for score display
+ */
+export const getScoreBadgeColor = (score: number): string => {
+  if (score >= 8) return 'bg-green-500/20 border-green-500/50 text-green-400';
+  if (score >= 6) return 'bg-yellow-500/20 border-yellow-500/50 text-yellow-400';
+  return 'bg-red-500/20 border-red-500/50 text-red-400';
+};
+
+/**
+ * Shared Recharts tooltip style for dark theme
+ */
+export const CHART_TOOLTIP_STYLE = {
+  contentStyle: { backgroundColor: '#1e293b', border: '1px solid #475569', borderRadius: '6px' },
+  labelStyle: { color: '#e2e8f0' },
+};

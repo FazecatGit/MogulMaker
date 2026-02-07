@@ -85,7 +85,8 @@ export function usePositionsTable() {
         throw error;
       }
     },
-    staleTime: 1000 * 60 * 5, // 5 minutes
-    refetchInterval: 1000 * 30, // 30 seconds
+    staleTime: 1000 * 10, // 10 seconds - consider data stale quickly for real-time updates
+    refetchInterval: 1000 * 5, // 5 seconds - real-time price updates
+    refetchIntervalInBackground: true, // Continue updating even when tab is not focused
   });
 }

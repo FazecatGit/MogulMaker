@@ -12,10 +12,13 @@
 
 # testing
 /coverage
+/playwright-report
+/test-results
 
 # next.js
 /.next/
 /out/
+/.swc/
 
 # production
 /build
@@ -39,3 +42,11 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# documentation (keep in version control, ignore build artifacts only)
+# Uncomment if you want to ignore docs
+# /docs/
+
+# lighthouse reports
+/lighthouse-reports
+/.lighthouseci

@@ -3,8 +3,15 @@
 import React, { useState, useEffect } from 'react';
 import { Star, Plus, X, RefreshCw, Trash2, Eye } from 'lucide-react';
 import PageHeader from '@/components/PageHeader';
+import Card from '@/components/ui/Card';
+import StatCard from '@/components/ui/StatCard';
+import StatusAlert from '@/components/ui/StatusAlert';
+import SearchInput from '@/components/ui/SearchInput';
+import SelectInput from '@/components/ui/SelectInput';
+import SkeletonLoader from '@/components/ui/SkeletonLoader';
 import ResponsiveTable from '@/components/Tables/ResponsiveTable';
-import { formatDate, safeValue } from '@/lib/formatters';
+import { formatDate } from '@/lib/formatters';
+import { getScoreBadgeColor } from '@/lib/colorHelpers';
 import apiClient from '@/lib/apiClient';
 
 interface WatchlistItem {
@@ -209,61 +216,24 @@ export default function WatchlistPage() {
     return sorted;
   };
 
-  const getScoreBadgeColor = (score: number) => {
-    if (score >= 8) return 'bg-green-500/20 border-green-500/50 text-green-400';
-    if (score >= 6) return 'bg-yellow-500/20 border-yellow-500/50 text-yellow-400';
-    return 'bg-red-500/20 border-red-500/50 text-red-400';
-  };
-
-  const formatDate = (dateString?: string | null) => {
-    if (!dateString) return 'Unknown';
-    const date = new Date(dateString);
-    const now = new Date();
-    const diffMs = now.getTime() - date.getTime();
-    const diffDays = Math.floor(diffMs / 86400000);
-
-    if (diffDays === 0) return 'Today';
-    if (diffDays === 1) return 'Yesterday';
-    if (diffDays < 7) return `${diffDays}d ago`;
-    if (diffDays < 30) return `${Math.floor(diffDays / 7)}w ago`;
-    return date.toLocaleDateString();
-  };
-
-  // Safe extraction from database null types
-  const safeValue = (value: any): string => {
-    if (value === null || value === undefined) return '';
-    if (typeof value === 'string') return value;
-    if (typeof value === 'object' && value.String !== undefined) return value.String;
-    return String(value);
-  };
-
-  const getScoreColor = (score: number) => {
-    if (score >= 80) return 'text-green-400 bg-green-500/20';
-    if (score >= 60) return 'text-yellow-400 bg-yellow-500/20';
-    return 'text-red-400 bg-red-500/20';
-  };
-
-
-
   return (
     <div className="w-full space-y-8">
-      {/* Controls */}
       <div className="flex gap-2 justify-end">
         <button
           onClick={fetchWatchlist}
           disabled={isLoading}
-          className="flex items-center gap-2 bg-slate-700 hover:bg-slate-600 disabled:bg-slate-700 text-white px-4 py-2 rounded-lg font-semibold transition"
+          className="flex items-center gap-2 bg-slate-700 hover:bg-slate-600 disabled:bg-slate-800 text-white px-4 py-2 rounded-lg font-semibold transition"
         >
           <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
           Refresh
         </button>
         <button
           onClick={scanAllWatchlist}
-          disabled={isScanning}
-          className="flex items-center gap-2 bg-purple-600 hover:bg-purple-700 disabled:bg-slate-600 text-white px-4 py-2 rounded-lg font-semibold transition"
+          disabled={isScanning || isLoading}
+          className="flex items-center gap-2 bg-purple-600 hover:bg-purple-700 disabled:bg-slate-800 text-white px-4 py-2 rounded-lg font-semibold transition"
         >
           <RefreshCw className={`w-4 h-4 ${isScanning ? 'animate-spin' : ''}`} />
-          Scan All
+          {isScanning ? 'Scanning...' : 'Scan All'}
         </button>
         <button
           onClick={() => setAddSymbolModal(true)}
@@ -273,9 +243,10 @@ export default function WatchlistPage() {
           Add Symbol
         </button>
       </div>
-
-      {/* Header */}
-      <PageHeader title="Watchlist" description="Monitor stocks and market opportunities" />
+      <PageHeader
+        title="Watchlist"
+        description="Track and monitor your favorite symbols"
+      />
 
       {/* Add Symbol Modal */}
       {addSymbolModal && (
@@ -353,53 +324,34 @@ export default function WatchlistPage() {
       )}
 
       {/* Error State */}
-      {error && (
-        <div className="bg-red-500/20 border border-red-500/50 rounded-lg p-4 text-red-400">
-          {error}
-        </div>
-      )}
+      {error && <StatusAlert message={error} variant="error" />}
 
       {/* Filters & Sort */}
-      <div className="bg-slate-800 rounded-lg border border-slate-700 p-4 space-y-4">
+      <Card padding="md">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
-            <label className="block text-slate-300 text-sm font-semibold mb-2">
-              Filter by Symbol
-            </label>
-            <input
-              type="text"
-              placeholder="Search symbol..."
-              value={filterSymbol}
-              onChange={(e) => setFilterSymbol(e.target.value)}
-              className="w-full px-4 py-2 bg-slate-700 border border-slate-600 rounded text-white placeholder-slate-400 focus:outline-none focus:border-blue-500"
-            />
+            <label className="block text-slate-300 text-sm font-semibold mb-2">Filter by Symbol</label>
+            <SearchInput value={filterSymbol} onChange={setFilterSymbol} placeholder="Search symbol..." className="w-full" />
           </div>
-
           <div>
             <label className="block text-slate-300 text-sm font-semibold mb-2">Sort By</label>
-            <select
+            <SelectInput
               value={sortBy}
-              onChange={(e) => setSortBy(e.target.value as typeof sortBy)}
-              className="w-full px-4 py-2 bg-slate-700 border border-slate-600 rounded text-white focus:outline-none focus:border-blue-500"
-            >
-              <option value="score">Score (High to Low)</option>
-              <option value="symbol">Symbol (A-Z)</option>
-              <option value="date">Date Added (Newest)</option>
-            </select>
+              onChange={(v) => setSortBy(v as typeof sortBy)}
+              options={[
+                { value: 'score', label: 'Score (High to Low)' },
+                { value: 'symbol', label: 'Symbol (A-Z)' },
+                { value: 'date', label: 'Date Added (Newest)' },
+              ]}
+              className="w-full"
+            />
           </div>
         </div>
-      </div>
+      </Card>
 
       {/* Loading State */}
       {isLoading && (!Array.isArray(watchlistData?.watchlist) || watchlistData.watchlist.length === 0) && (
-        <div className="space-y-4">
-          {[1, 2, 3].map((i) => (
-            <div key={i} className="bg-slate-800 rounded-lg border border-slate-700 p-4 animate-pulse">
-              <div className="h-6 bg-slate-700 rounded w-1/4 mb-3"></div>
-              <div className="h-4 bg-slate-700 rounded w-full"></div>
-            </div>
-          ))}
-        </div>
+        <SkeletonLoader count={3} withContent />
       )}
 
       {/* Empty State */}
@@ -437,13 +389,19 @@ export default function WatchlistPage() {
             {
               key: 'reason',
               label: 'Reason',
-              render: (val) => <p className="text-sm text-slate-400">{safeValue(val) || 'No reason provided'}</p>,
+              render: (val) => {
+                const reasonText = val ? String(val) : 'No reason provided';
+                return <p className="text-sm text-slate-400">{reasonText}</p>;
+              },
             },
             {
               key: 'added_date',
               label: 'Added',
               align: 'center',
-              render: (val) => <p className="text-sm text-slate-400">{formatDate(safeValue(val))}</p>,
+              render: (val) => {
+                const formattedDate = val ? formatDate(val) : 'N/A';
+                return <p className="text-sm text-slate-400">{formattedDate}</p>;
+              },
               mobileHidden: true,
             },
           ]}
@@ -476,7 +434,7 @@ export default function WatchlistPage() {
           renderMobileCard={(item) => (
             <div className="space-y-2 text-sm">
               <div className="flex justify-between"><span className="text-slate-400">Score:</span><span className={`font-bold px-2 py-1 rounded ${getScoreBadgeColor(item.score)}`}>{item.score.toFixed(1)}</span></div>
-              <div className="flex justify-between"><span className="text-slate-400">Reason:</span><span className="text-white text-xs text-right ml-2">{safeValue(item.reason) || 'N/A'}</span></div>
+              <div className="flex justify-between"><span className="text-slate-400">Reason:</span><span className="text-white text-xs text-right ml-2">{item.reason ? String(item.reason) : 'N/A'}</span></div>
             </div>
           )}
           emptyMessage="No symbols in watchlist"
@@ -553,31 +511,20 @@ export default function WatchlistPage() {
       {/* Summary Stats */}
       {!isLoading && getSortedSymbols().length > 0 && (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div className="bg-slate-800 rounded-lg border border-slate-700 p-4">
-            <p className="text-slate-400 text-sm font-semibold mb-2">Total Symbols</p>
-            <p className="text-2xl font-bold text-white">{watchlistData.count}</p>
-          </div>
-
-          <div className="bg-slate-800 rounded-lg border border-slate-700 p-4">
-            <p className="text-slate-400 text-sm font-semibold mb-2">Avg Score</p>
-            <p className="text-2xl font-bold text-white">
-              {watchlistData.count > 0 ? (
-                (
-                  getSortedSymbols().reduce((sum, item) => sum + item.score, 0) /
-                  getSortedSymbols().length
-                ).toFixed(1)
-              ) : (
-                '0'
-              )}
-            </p>
-          </div>
-
-          <div className="bg-slate-800 rounded-lg border border-slate-700 p-4">
-            <p className="text-slate-400 text-sm font-semibold mb-2">High Scoring</p>
-            <p className="text-2xl font-bold text-green-400">
-              {getSortedSymbols().filter((item) => item.score >= 8).length}/{watchlistData.count}
-            </p>
-          </div>
+          <StatCard label="Total Symbols" value={watchlistData.count.toString()} />
+          <StatCard
+            label="Avg Score"
+            value={
+              watchlistData.count > 0
+                ? (getSortedSymbols().reduce((sum, item) => sum + item.score, 0) / getSortedSymbols().length).toFixed(1)
+                : '0'
+            }
+          />
+          <StatCard
+            label="High Scoring"
+            value={`${getSortedSymbols().filter((item) => item.score >= 8).length}/${watchlistData.count}`}
+            variant="positive"
+          />
         </div>
       )}
     </div>

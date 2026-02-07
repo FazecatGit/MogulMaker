@@ -5,8 +5,12 @@ import { useTradeStatistics } from '@/hooks/useTradeStatistics';
 import { useTrades } from '@/hooks/useTrades';
 import { usePositionsTable } from '@/hooks/usePositionsTable';
 import PageHeader from '@/components/PageHeader';
-import { Loader2, AlertCircle, TrendingUp, TrendingDown } from 'lucide-react';
+import Card from '@/components/ui/Card';
+import SkeletonLoader from '@/components/ui/SkeletonLoader';
+import StatusAlert from '@/components/ui/StatusAlert';
+import { Loader2, AlertCircle, TrendingUp, TrendingDown, Activity, DollarSign } from 'lucide-react';
 import { formatCurrency, formatPercent } from '@/lib/formatters';
+import { CHART_TOOLTIP_STYLE } from '@/lib/colorHelpers';
 import {
   LineChart,
   Line,
@@ -118,8 +122,53 @@ export default function DashboardPage() {
     }));
   };
 
+  // Calculate today's daily performance summary
+  const calculateDailyStats = () => {
+    if (!tradesData?.trades) return null;
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const yesterday = new Date(today);
+    yesterday.setDate(yesterday.getDate() - 1);
+
+    // Filter trades from today
+    const todayTrades = tradesData.trades.filter((trade: any) => {
+      const tradeDate = new Date(trade.entry_time);
+      tradeDate.setHours(0, 0, 0, 0);
+      return tradeDate.getTime() === today.getTime();
+    });
+
+    // Filter trades from yesterday
+    const yesterdayTrades = tradesData.trades.filter((trade: any) => {
+      const tradeDate = new Date(trade.entry_time);
+      tradeDate.setHours(0, 0, 0, 0);
+      return tradeDate.getTime() === yesterday.getTime();
+    });
+
+    // Calculate today's stats
+    const todayWinners = todayTrades.filter((t: any) => (t.realized_pl || 0) > 0).length;
+    const todayLosers = todayTrades.filter((t: any) => (t.realized_pl || 0) < 0).length;
+    const todayPnL = todayTrades.reduce((sum: number, t: any) => sum + (t.realized_pl || 0), 0);
+    const todayVolume = todayTrades.reduce((sum: number, t: any) => sum + (parseFloat(t.qty) * parseFloat(t.entry_price)), 0);
+
+    // Calculate yesterday's P&L for comparison
+    const yesterdayPnL = yesterdayTrades.reduce((sum: number, t: any) => sum + (t.realized_pl || 0), 0);
+    const pnlChange = yesterdayPnL !== 0 ? ((todayPnL - yesterdayPnL) / Math.abs(yesterdayPnL)) * 100 : 0;
+
+    return {
+      tradesExecuted: todayTrades.length,
+      winners: todayWinners,
+      losers: todayLosers,
+      totalPnL: todayPnL,
+      totalVolume: todayVolume,
+      pnlVsYesterday: pnlChange,
+      yesterdayPnL,
+    };
+  };
+
   const chartData = processTradeData();
   const currentPositions = processCurrentPositions();
+  const dailyStats = calculateDailyStats();
   const COLORS = ['#22c55e', '#ef4444', '#3b82f6', '#f59e0b', '#8b5cf6', '#ec4899', '#14b8a6', '#f97316'];
 
   // Loading state - show spinners
@@ -127,17 +176,8 @@ export default function DashboardPage() {
     return (
       <div>
         <PageHeader title="Portfolio Dashboard" />
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          {[1, 2, 3].map((i) => (
-            <div
-              key={i}
-              className="bg-slate-800 rounded-lg p-6 border border-slate-700 animate-pulse"
-            >
-              <div className="h-4 bg-slate-700 rounded mb-4 w-20"></div>
-              <div className="h-8 bg-slate-700 rounded mb-2 w-32"></div>
-              <div className="h-4 bg-slate-700 rounded w-24"></div>
-            </div>
-          ))}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+          <SkeletonLoader count={4} height="h-24" withContent />
         </div>
       </div>
     );
@@ -147,16 +187,11 @@ export default function DashboardPage() {
   if (isError) {
     return (
       <div>
-        <h1 className="text-3xl font-bold mb-8">Portfolio Dashboard</h1>
-        <div className="bg-red-900/20 border border-red-700 rounded-lg p-6 flex items-center gap-3">
-          <AlertCircle className="w-5 h-5 text-red-400" />
-          <div>
-            <p className="text-red-400 font-semibold">Failed to load portfolio</p>
-            <p className="text-red-300 text-sm">
-              {error instanceof Error ? error.message : 'Unknown error'}
-            </p>
-          </div>
-        </div>
+        <PageHeader title="Portfolio Dashboard" />
+        <StatusAlert
+          message={error instanceof Error ? error.message : 'Failed to load portfolio'}
+          variant="error"
+        />
       </div>
     );
   }
@@ -167,7 +202,7 @@ export default function DashboardPage() {
       <PageHeader title="Portfolio Dashboard" />
 
       {/* Real Data Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         {/* Total P&L Card */}
         <div className="bg-slate-800 rounded-lg p-6 border border-slate-700">
           <p className="text-slate-400 text-sm mb-2">Total P&L</p>
@@ -210,6 +245,52 @@ export default function DashboardPage() {
             {statsData ? `${statsData.winning_trades}W / ${statsData.losing_trades}L` : 'Loading...'}
           </p>
         </div>
+
+        {/* Daily Performance Summary Card */}
+        <div className="bg-slate-800 rounded-lg p-6 border border-slate-700">
+          <div className="flex items-center gap-2 mb-2">
+            <Activity className="w-4 h-4 text-purple-400" />
+            <p className="text-slate-400 text-sm">Today's Activity</p>
+          </div>
+          {dailyStats ? (
+            <>
+              <div className="flex items-baseline gap-2 mb-3">
+                <p className="text-2xl font-bold text-white">{dailyStats.tradesExecuted}</p>
+                <p className="text-sm text-slate-400">trades</p>
+              </div>
+              <div className="space-y-1.5">
+                <div className="flex justify-between text-sm">
+                  <span className="text-slate-400">Winners / Losers</span>
+                  <span className="text-white font-semibold">
+                    <span className="text-green-400">{dailyStats.winners}</span>
+                    {' / '}
+                    <span className="text-red-400">{dailyStats.losers}</span>
+                  </span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-slate-400">Today's P&L</span>
+                  <span className={`font-semibold ${dailyStats.totalPnL >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                    {dailyStats.totalPnL >= 0 ? '+' : ''}{formatCurrency(dailyStats.totalPnL)}
+                  </span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-slate-400">Volume</span>
+                  <span className="text-white font-semibold">{formatCurrency(dailyStats.totalVolume)}</span>
+                </div>
+                {dailyStats.yesterdayPnL !== 0 && (
+                  <div className="flex justify-between text-sm pt-1 border-t border-slate-700">
+                    <span className="text-slate-400">vs Yesterday</span>
+                    <span className={`font-semibold ${dailyStats.pnlVsYesterday >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                      {dailyStats.pnlVsYesterday >= 0 ? '+' : ''}{dailyStats.pnlVsYesterday.toFixed(1)}%
+                    </span>
+                  </div>
+                )}
+              </div>
+            </>
+          ) : (
+            <p className="text-slate-400 text-sm">No trades today</p>
+          )}
+        </div>
       </div>
 
       {/* Portfolio Earnings Over Time */}
@@ -222,12 +303,7 @@ export default function DashboardPage() {
               <XAxis dataKey="date" stroke="#64748b" tick={{ fontSize: 12 }} />
               <YAxis stroke="#64748b" tick={{ fontSize: 12 }} label={{ value: 'P&L ($)', angle: -90, position: 'insideLeft' }} />
               <Tooltip 
-                contentStyle={{
-                  backgroundColor: '#1e293b',
-                  border: '1px solid #475569',
-                  borderRadius: '6px',
-                }}
-                labelStyle={{ color: '#e2e8f0' }}
+                {...CHART_TOOLTIP_STYLE}
                 formatter={(value: any) => [`$${value.toFixed(2)}`, 'P&L']}
               />
               <Line 
@@ -265,12 +341,7 @@ export default function DashboardPage() {
                   ))}
                 </Pie>
                 <Tooltip 
-                  contentStyle={{
-                    backgroundColor: '#1e293b',
-                    border: '1px solid #475569',
-                    borderRadius: '6px',
-                  }}
-                  labelStyle={{ color: '#e2e8f0' }}
+                  {...CHART_TOOLTIP_STYLE}
                   formatter={(value: any, name: string | undefined) => {
                     if (name === 'marketValue') return [`$${value?.toFixed(2) || '0'}`, 'Market Value'];
                     return [value, name];

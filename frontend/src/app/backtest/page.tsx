@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Calendar, Play, RotateCcw, TrendingUp, BarChart3 } from 'lucide-react';
+import { Calendar, Play, RotateCcw, TrendingUp, BarChart3, Save, X } from 'lucide-react';
 import PageHeader from '@/components/PageHeader';
 import Button from '@/components/ui/Button';
 import StatCard from '@/components/ui/StatCard';
@@ -58,6 +58,8 @@ export default function BacktestPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [results, setResults] = useState<BacktestResult | null>(null);
+  const [savedBacktests, setSavedBacktests] = useState<BacktestResult[]>([]);
+  const [showComparison, setShowComparison] = useState(false);
 
   const handleRunBacktest = async () => {
     if (!symbol.trim() || !startDate || !endDate) {
@@ -98,6 +100,17 @@ export default function BacktestPage() {
     setEndDate('');
     setResults(null);
     setError(null);
+  };
+
+  const handleSaveBacktest = () => {
+    if (results) {
+      setSavedBacktests(prev => [...prev, { ...results, created_at: Date.now() }]);
+      setShowComparison(true);
+    }
+  };
+
+  const handleRemoveBacktest = (index: number) => {
+    setSavedBacktests(prev => prev.filter((_, i) => i !== index));
   };
 
   return (
@@ -204,10 +217,30 @@ export default function BacktestPage() {
               {/* Summary Card */}
               <div className="bg-gradient-to-br from-slate-800 to-slate-750 rounded-lg border border-slate-700 p-6 space-y-4">
                 <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-lg font-bold text-white">Backtest Results</h3>
-                  <span className="text-sm text-slate-400">
-                    {results.start_date} to {results.end_date}
-                  </span>
+                  <div>
+                    <h3 className="text-lg font-bold text-white">Backtest Results</h3>
+                    <span className="text-sm text-slate-400">
+                      {results.start_date} to {results.end_date}
+                    </span>
+                  </div>
+                  <div className="flex gap-2">
+                    {savedBacktests.length > 0 && (
+                      <Button
+                        variant="secondary"
+                        icon={<BarChart3 className="w-4 h-4" />}
+                        onClick={() => setShowComparison(!showComparison)}
+                      >
+                        {showComparison ? 'Hide' : 'Show'} Comparison ({savedBacktests.length})
+                      </Button>
+                    )}
+                    <Button
+                      variant="primary"
+                      icon={<Save className="w-4 h-4" />}
+                      onClick={handleSaveBacktest}
+                    >
+                      Save for Comparison
+                    </Button>
+                  </div>
                 </div>
 
                 {/* Main Metrics */}
@@ -234,6 +267,111 @@ export default function BacktestPage() {
                   />
                 </div>
               </div>
+
+              {/* Comparison Table */}
+              {showComparison && savedBacktests.length > 0 && (
+                <div className="bg-slate-800 rounded-lg border border-slate-700 p-6">
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-lg font-bold text-white">Backtest Comparison</h3>
+                    <Button
+                      variant="secondary"
+                      icon={<X className="w-4 h-4" />}
+                      onClick={() => setSavedBacktests([])}
+                    >
+                      Clear All
+                    </Button>
+                  </div>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b border-slate-700">
+                          <th className="text-left p-3 text-slate-400 font-semibold">Metric</th>
+                          {savedBacktests.map((bt, idx) => (
+                            <th key={idx} className="text-right p-3">
+                              <div className="flex flex-col items-end gap-1">
+                                <span className="text-white font-bold">{bt.symbol}</span>
+                                <span className="text-xs text-slate-400">{bt.start_date}</span>
+                                <button
+                                  onClick={() => handleRemoveBacktest(idx)}
+                                  className="text-red-400 hover:text-red-300 text-xs"
+                                >
+                                  Remove
+                                </button>
+                              </div>
+                            </th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <tr className="border-b border-slate-700/50">
+                          <td className="p-3 text-slate-300">Total Return</td>
+                          {savedBacktests.map((bt, idx) => (
+                            <td key={idx} className={`p-3 text-right font-semibold ${getPnLColor(bt.total_return_pct)}`}>
+                              {bt.total_return_pct.toFixed(2)}%
+                            </td>
+                          ))}
+                        </tr>
+                        <tr className="border-b border-slate-700/50">
+                          <td className="p-3 text-slate-300">Win Rate</td>
+                          {savedBacktests.map((bt, idx) => (
+                            <td key={idx} className="p-3 text-right text-white font-semibold">
+                              {bt.win_rate.toFixed(2)}%
+                            </td>
+                          ))}
+                        </tr>
+                        <tr className="border-b border-slate-700/50">
+                          <td className="p-3 text-slate-300">Total Trades</td>
+                          {savedBacktests.map((bt, idx) => (
+                            <td key={idx} className="p-3 text-right text-white font-semibold">
+                              {bt.total_trades}
+                            </td>
+                          ))}
+                        </tr>
+                        <tr className="border-b border-slate-700/50">
+                          <td className="p-3 text-slate-300">Winning Trades</td>
+                          {savedBacktests.map((bt, idx) => (
+                            <td key={idx} className="p-3 text-right text-green-400 font-semibold">
+                              {bt.winning_trades}
+                            </td>
+                          ))}
+                        </tr>
+                        <tr className="border-b border-slate-700/50">
+                          <td className="p-3 text-slate-300">Losing Trades</td>
+                          {savedBacktests.map((bt, idx) => (
+                            <td key={idx} className="p-3 text-right text-red-400 font-semibold">
+                              {bt.losing_trades}
+                            </td>
+                          ))}
+                        </tr>
+                        <tr className="border-b border-slate-700/50">
+                          <td className="p-3 text-slate-300">Largest Win</td>
+                          {savedBacktests.map((bt, idx) => (
+                            <td key={idx} className="p-3 text-right text-green-400 font-semibold">
+                              {formatCurrency(bt.largest_win)}
+                            </td>
+                          ))}
+                        </tr>
+                        <tr className="border-b border-slate-700/50">
+                          <td className="p-3 text-slate-300">Largest Loss</td>
+                          {savedBacktests.map((bt, idx) => (
+                            <td key={idx} className="p-3 text-right text-red-400 font-semibold">
+                              {formatCurrency(Math.abs(bt.largest_loss))}
+                            </td>
+                          ))}
+                        </tr>
+                        <tr className="border-b border-slate-700/50">
+                          <td className="p-3 text-slate-300">Final Balance</td>
+                          {savedBacktests.map((bt, idx) => (
+                            <td key={idx} className={`p-3 text-right font-semibold ${bt.final_balance >= bt.initial_capital ? 'text-green-400' : 'text-red-400'}`}>
+                              {formatCurrency(bt.final_balance)}
+                            </td>
+                          ))}
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
 
               {/* Detailed Metrics */}
               <div className="bg-slate-800 rounded-lg border border-slate-700 p-4">
@@ -274,6 +412,7 @@ export default function BacktestPage() {
                     data={results.historical_bars}
                     title="Price Movement"
                     daysLabel={`${results.historical_bars.length} days`}
+                    showVolume={true}
                     height={400}
                   />
 
