@@ -21,27 +21,42 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
-    <html lang="en">
-      <body className="bg-slate-950 text-white antialiased">
+    <html lang="en" suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{
+          __html: `
+            (function() {
+              try {
+                localStorage.setItem('theme', 'dark');
+                document.documentElement.classList.add('dark');
+              } catch (e) {}
+            })()
+          `
+        }} />
+      </head>
+      <body style={{ backgroundColor: 'var(--background)', color: 'var(--foreground)' }} className="antialiased">
         {/* Providers component wraps everything with TanStack Query */}
         <Providers>
-          {/* Header - top navigation */}
-          <Header userName="Trader" />
-
-          <div className="flex">
-            {/* Sidebar - left navigation */}
+          <div className="flex h-screen">
+            {/* Sidebar - full height, fixed width */}
             <Sidebar />
 
-            {/* Main Content Area */}
-            <main className="flex-1 md:ml-64 min-h-screen flex flex-col">
-              {/* Page content goes here */}
-              <div className="flex-1 p-6">
-                {children}
-              </div>
+            {/* Main content area with header */}
+            <div className="flex-1 flex flex-col overflow-hidden">
+              {/* Header - top navigation */}
+              <Header userName="Trader" />
 
-              {/* Footer - always at bottom */}
-              <Footer />
-            </main>
+              {/* Scrollable main content */}
+              <main className="flex-1 overflow-auto">
+                {/* Page content */}
+                <div className="p-6">
+                  {children}
+                </div>
+
+                {/* Footer - at bottom of scrollable content */}
+                <Footer />
+              </main>
+            </div>
           </div>
         </Providers>
       </body>

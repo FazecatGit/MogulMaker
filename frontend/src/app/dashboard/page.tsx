@@ -4,6 +4,7 @@ import { usePortfolio } from '@/hooks/usePortfolio';
 import { useTradeStatistics } from '@/hooks/useTradeStatistics';
 import { useTrades } from '@/hooks/useTrades';
 import { usePositionsTable } from '@/hooks/usePositionsTable';
+import PageHeader from '@/components/PageHeader';
 import { Loader2, AlertCircle, TrendingUp, TrendingDown } from 'lucide-react';
 import {
   LineChart,
@@ -124,7 +125,7 @@ export default function DashboardPage() {
   if (isLoading || statsLoading || tradesLoading || positionsLoading) {
     return (
       <div>
-        <h1 className="text-3xl font-bold mb-8">Portfolio Dashboard</h1>
+        <PageHeader title="Portfolio Dashboard" />
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           {[1, 2, 3].map((i) => (
             <div
@@ -162,7 +163,7 @@ export default function DashboardPage() {
   // Success state - display real data
   return (
     <div>
-      <h1 className="text-3xl font-bold mb-8">Portfolio Dashboard</h1>
+      <PageHeader title="Portfolio Dashboard" />
 
       {/* Real Data Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">

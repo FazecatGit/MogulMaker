@@ -58,7 +58,7 @@ export default function Sidebar() {
       {/* Mobile Toggle Button - only visible on small screens */}
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="fixed top-20 left-4 z-40 md:hidden bg-blue-600 p-2 rounded-lg text-white"
+        className="fixed top-4 left-4 z-40 md:hidden bg-primary p-2 rounded-lg text-white"
       >
         <ChevronDown className="w-5 h-5" />
       </button>
@@ -66,10 +66,10 @@ export default function Sidebar() {
       {/* Sidebar Container */}
       <aside
         className={`
-          fixed left-0 top-16 h-[calc(100vh-4rem)] w-64 bg-slate-900 border-r border-slate-700
+          w-64 bg-gradient-to-b from-slate-900 to-slate-950 border-r border-slate-700/50
           transform transition-transform duration-300 ease-in-out
           ${isOpen ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0
-          overflow-y-auto z-30
+          overflow-y-auto z-30 flex flex-col h-full
         `}
       >
         <nav className="p-4 space-y-2">
@@ -83,8 +83,8 @@ export default function Sidebar() {
                 flex items-center gap-3 px-4 py-3 rounded-lg transition-all duration-200
                 ${
                   isActive(item.href)
-                    ? 'bg-blue-600 text-white shadow-lg' // Active state (highlighted)
-                    : 'text-slate-300 hover:bg-slate-800 hover:text-white' // Inactive state
+                    ? 'bg-primary text-white shadow-lg shadow-primary/50' // Active state (highlighted)
+                    : 'text-slate-400 hover:bg-slate-800 hover:text-white' // Inactive state
                 }
               `}
             >

@@ -37,17 +37,20 @@ interface CacheEntry {
 class APIClient {
   private client: AxiosInstance;
   private cache: Map<string, CacheEntry> = new Map();
-  private readonly CACHE_DURATION = 60 * 1000;
-  private readonly MAX_RETRIES = 3;
-  private readonly RETRY_DELAY = 1000;
+  private readonly CACHE_DURATION = 10 * 1000; // 10s default (will be multiplied by 5 in get())
+  private readonly MAX_RETRIES = 2; // Reduce retries to fail faster
+  private readonly RETRY_DELAY = 500; // Reduce retry delay from 1s to 500ms
 
   constructor() {
     this.client = axios.create({
       baseURL: 'http://localhost:8080',
-      timeout: 120000, // Increased to 120s for long-running scans
+      timeout: 30000, // 30s timeout for normal requests
       headers: {
         'Content-Type': 'application/json',
       },
+      // Optimize socket handling
+      httpAgent: require('http').globalAgent,
+      httpsAgent: require('https').globalAgent,
     });
 
     // Add request interceptor for retry logic
@@ -79,7 +82,7 @@ class APIClient {
    * @param url - Endpoint
    * @param cacheDuration - Optional cache TTL in ms (default: 60s)
    */
-  async get<T>(url: string, cacheDuration = this.CACHE_DURATION): Promise<T> {
+  async get<T>(url: string, cacheDuration = this.CACHE_DURATION * 5): Promise<T> {
     const cached = this.cache.get(url);
     if (cached && Date.now() - cached.timestamp < cacheDuration) {
       console.log(`[Cache HIT] ${url}`);

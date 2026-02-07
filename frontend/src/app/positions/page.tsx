@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { AlertCircle, TrendingUp, TrendingDown, Plus, Minus } from 'lucide-react';
+import PageHeader from '@/components/PageHeader';
 import { usePositionsTable, type Position } from '@/hooks/usePositionsTable';
 import apiClient from '@/lib/apiClient';
 
@@ -99,10 +100,10 @@ export default function PositionsPage() {
   if (isLoading) {
     return (
       <div className="space-y-6">
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold text-white mb-2">Positions</h1>
-          <p className="text-slate-400">View and manage your open positions</p>
-        </div>
+        <PageHeader 
+          title="Positions" 
+          description="View and manage your open positions"
+        />
 
         {/* Skeleton loaders */}
         <div className="space-y-2">
@@ -145,13 +146,10 @@ export default function PositionsPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-white mb-2">Positions</h1>
-        <p className="text-slate-400">
-          {positions.length} open position{positions.length !== 1 ? 's' : ''}
-          {pendingOrders.length > 0 && ` • ${pendingOrders.length} pending order${pendingOrders.length !== 1 ? 's' : ''}`}
-        </p>
-      </div>
+      <PageHeader 
+        title="Positions" 
+        description={`${positions.length} open position${positions.length !== 1 ? 's' : ''}${pendingOrders.length > 0 ? ` • ${pendingOrders.length} pending order${pendingOrders.length !== 1 ? 's' : ''}` : ''}`}
+      />
 
       {/* Pending Orders Alert */}
       {pendingOrders.length > 0 && (

@@ -26,6 +26,16 @@ const queryClient = new QueryClient({
   },
 });
 
+function DarkModeInitializer({ children }: { children: ReactNode }) {
+  useEffect(() => {
+    // Always force dark mode
+    document.documentElement.classList.add('dark');
+    localStorage.setItem('theme', 'dark');
+  }, []);
+
+  return children;
+}
+
 function AuthInitializer({ children }: { children: ReactNode }) {
   useEffect(() => {
     const initializeAuth = async () => {
@@ -68,7 +78,9 @@ function AuthInitializer({ children }: { children: ReactNode }) {
 export default function Providers({ children }: { children: ReactNode }) {
   return (
     <QueryClientProvider client={queryClient}>
-      <AuthInitializer>{children}</AuthInitializer>
+      <DarkModeInitializer>
+        <AuthInitializer>{children}</AuthInitializer>
+      </DarkModeInitializer>
     </QueryClientProvider>
   );
 }

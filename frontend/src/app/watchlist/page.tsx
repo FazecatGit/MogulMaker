@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { Star, Plus, X, RefreshCw, Trash2, Eye } from 'lucide-react';
+import PageHeader from '@/components/PageHeader';
 import apiClient from '@/lib/apiClient';
 
 interface WatchlistItem {
@@ -41,6 +42,7 @@ export default function WatchlistPage() {
   const [isScanning, setIsScanning] = useState(false);
 
   useEffect(() => {
+    // Auto-fetch watchlist when page loads
     fetchWatchlist();
   }, []);
 
@@ -242,39 +244,36 @@ export default function WatchlistPage() {
 
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-8">
-        <div>
-          <h1 className="text-3xl font-bold text-white mb-2">Watchlist</h1>
-          <p className="text-slate-400">Monitor stocks and market opportunities</p>
-        </div>
-        <div className="flex gap-2">
-          <button
-            onClick={fetchWatchlist}
-            disabled={isLoading}
-            className="flex items-center gap-2 bg-slate-700 hover:bg-slate-600 disabled:bg-slate-700 text-white px-4 py-2 rounded-lg font-semibold transition"
-          >
-            <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
-            Refresh
-          </button>
-          <button
-            onClick={scanAllWatchlist}
-            disabled={isScanning}
-            className="flex items-center gap-2 bg-purple-600 hover:bg-purple-700 disabled:bg-slate-600 text-white px-4 py-2 rounded-lg font-semibold transition"
-          >
-            <RefreshCw className={`w-4 h-4 ${isScanning ? 'animate-spin' : ''}`} />
-            Scan All
-          </button>
-          <button
-            onClick={() => setAddSymbolModal(true)}
-            className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-semibold transition"
-          >
-            <Plus className="w-4 h-4" />
-            Add Symbol
-          </button>
-        </div>
+    <div className="w-full space-y-8">
+      {/* Controls */}
+      <div className="flex gap-2 justify-end">
+        <button
+          onClick={fetchWatchlist}
+          disabled={isLoading}
+          className="flex items-center gap-2 bg-slate-700 hover:bg-slate-600 disabled:bg-slate-700 text-white px-4 py-2 rounded-lg font-semibold transition"
+        >
+          <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
+          Refresh
+        </button>
+        <button
+          onClick={scanAllWatchlist}
+          disabled={isScanning}
+          className="flex items-center gap-2 bg-purple-600 hover:bg-purple-700 disabled:bg-slate-600 text-white px-4 py-2 rounded-lg font-semibold transition"
+        >
+          <RefreshCw className={`w-4 h-4 ${isScanning ? 'animate-spin' : ''}`} />
+          Scan All
+        </button>
+        <button
+          onClick={() => setAddSymbolModal(true)}
+          className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-semibold transition"
+        >
+          <Plus className="w-4 h-4" />
+          Add Symbol
+        </button>
       </div>
+
+      {/* Header */}
+      <PageHeader title="Watchlist" description="Monitor stocks and market opportunities" />
 
       {/* Add Symbol Modal */}
       {addSymbolModal && (

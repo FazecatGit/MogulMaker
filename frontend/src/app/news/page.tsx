@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { AlertCircle, TrendingUp, TrendingDown, Calendar, ExternalLink, RefreshCw, Zap } from 'lucide-react';
+import PageHeader from '@/components/PageHeader';
 import apiClient from '@/lib/apiClient';
 
 interface NewsItem {
@@ -30,6 +31,7 @@ export default function NewsPage() {
   const [selectedSentiment, setSelectedSentiment] = useState<string>('all');
   const [searchSymbol, setSearchSymbol] = useState('');
 
+  // Auto-fetch news when page loads
   useEffect(() => {
     fetchNews();
   }, []);
@@ -97,27 +99,24 @@ export default function NewsPage() {
   };
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="mb-8">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-bold text-white mb-2">News & Sentiment</h1>
-            <p className="text-slate-400">Latest market news with sentiment analysis</p>
-          </div>
-          <button
-            onClick={fetchNews}
-            disabled={isLoading}
-            className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-700 text-white px-4 py-2 rounded-lg font-semibold transition"
-          >
-            <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
-            Refresh
-          </button>
-        </div>
+    <div className="w-full space-y-8">
+      {/* Controls */}
+      <div className="flex justify-end">
+        <button
+          onClick={fetchNews}
+          disabled={isLoading}
+          className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-700 text-white px-4 py-2 rounded-lg font-semibold transition"
+        >
+          <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
+          Refresh
+        </button>
       </div>
+      
+      {/* Header */}
+      <PageHeader title="News & Sentiment" description="Latest market news with sentiment analysis" />
 
       {/* Filters */}
-      <div className="bg-slate-800 rounded-lg border border-slate-700 p-4 space-y-4">
+      <div className="control-panel">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {/* Symbol Filter */}
           <div>

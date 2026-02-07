@@ -2,6 +2,7 @@
 
 import React, { useState } from 'react';
 import { RefreshCw, Search, TrendingUp, TrendingDown, ZoomIn, ZoomOut } from 'lucide-react';
+import PageHeader from '@/components/PageHeader';
 import {
   LineChart,
   Line,
@@ -104,11 +105,10 @@ export default function AnalyzerPage() {
     <div className="min-h-screen bg-slate-900 text-white p-4">
       <div className="max-w-6xl mx-auto">
         {/* Header */}
-        <div className="mb-8">
-          <h1 className="text-4xl font-bold mb-2">Stock Analyzer</h1>
-          <p className="text-slate-400">Deep dive analysis of any stock symbol</p>
-        </div>
-
+      <PageHeader 
+        title="Stock Analyzer" 
+        description="Deep dive analysis of any stock symbol"
+      />
         {/* Search Section */}
         <form onSubmit={analyzeStock} className="mb-8">
           <div className="flex gap-2">

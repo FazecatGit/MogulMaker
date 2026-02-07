@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { AlertCircle, AlertTriangle, TrendingDown, DollarSign, Activity, RefreshCw } from 'lucide-react';
+import PageHeader from '@/components/PageHeader';
 import apiClient from '@/lib/apiClient';
 
 interface RiskAlert {
@@ -43,6 +44,7 @@ export default function RiskPage() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    // Auto-fetch risk data when page loads
     fetchRiskData();
   }, []);
 
@@ -125,10 +127,7 @@ export default function RiskPage() {
   if (!riskData && isLoading) {
     return (
       <div className="space-y-6">
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold text-white mb-2">Risk Dashboard</h1>
-          <p className="text-slate-400">Portfolio risk management and alerts</p>
-        </div>
+        <PageHeader title="Risk Dashboard" description="Portfolio risk management and alerts" />
 
         {/* Loading Skeleton */}
         <div className="space-y-4">
@@ -146,10 +145,7 @@ export default function RiskPage() {
   if (error && !riskData) {
     return (
       <div className="space-y-6">
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold text-white mb-2">Risk Dashboard</h1>
-          <p className="text-slate-400">Portfolio risk management and alerts</p>
-        </div>
+        <PageHeader title="Risk Dashboard" description="Portfolio risk management and alerts" />
 
         <div className="bg-red-500/20 border border-red-500/50 rounded-lg p-4 text-red-400">
           <p>{error}</p>
@@ -161,13 +157,9 @@ export default function RiskPage() {
   const metrics = riskData?.metrics;
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-8">
-        <div>
-          <h1 className="text-3xl font-bold text-white mb-2">Risk Dashboard</h1>
-          <p className="text-slate-400">Portfolio risk management and alerts</p>
-        </div>
+    <div className="w-full space-y-8">
+      {/* Controls */}
+      <div className="flex justify-end">
         <button
           onClick={fetchRiskData}
           disabled={isLoading}
@@ -177,11 +169,14 @@ export default function RiskPage() {
           Refresh
         </button>
       </div>
+      
+      {/* Header */}
+      <PageHeader title="Risk Dashboard" description="Portfolio risk management and alerts" />
 
       {/* Key Metrics Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         {/* Daily Loss */}
-        <div className="bg-slate-800 rounded-lg border border-slate-700 p-4">
+        <div className="content-card">
           <div className="flex items-center justify-between mb-3">
             <span className="text-slate-400 text-sm font-semibold">Daily Loss</span>
             <DollarSign className="w-4 h-4 text-slate-500" />
@@ -214,7 +209,7 @@ export default function RiskPage() {
         </div>
 
         {/* Portfolio Risk */}
-        <div className="bg-slate-800 rounded-lg border border-slate-700 p-4">
+        <div className="content-card">
           <div className="flex items-center justify-between mb-3">
             <span className="text-slate-400 text-sm font-semibold">Portfolio Risk</span>
             <TrendingDown className="w-4 h-4 text-slate-500" />
@@ -227,7 +222,7 @@ export default function RiskPage() {
         </div>
 
         {/* Max Drawdown */}
-        <div className="bg-slate-800 rounded-lg border border-slate-700 p-4">
+        <div className="content-card">
           <div className="flex items-center justify-between mb-3">
             <span className="text-slate-400 text-sm font-semibold">Max Drawdown</span>
             <TrendingDown className="w-4 h-4 text-slate-500" />
@@ -241,7 +236,7 @@ export default function RiskPage() {
         </div>
 
         {/* Open Positions */}
-        <div className="bg-slate-800 rounded-lg border border-slate-700 p-4">
+        <div className="content-card">
           <div className="flex items-center justify-between mb-3">
             <span className="text-slate-400 text-sm font-semibold">Open Positions</span>
             <Activity className="w-4 h-4 text-slate-500" />
@@ -272,7 +267,7 @@ export default function RiskPage() {
       </div>
 
       {/* Alerts Section */}
-      <div className="bg-slate-800 rounded-lg border border-slate-700 p-6">
+      <div className="content-card page-section">
         <h2 className="text-xl font-bold text-white mb-4">Active Alerts</h2>
 
         {riskData?.alerts && riskData.alerts.length > 0 ? (
@@ -307,7 +302,7 @@ export default function RiskPage() {
       {/* Risk Details */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {/* Largest Position */}
-        <div className="bg-slate-800 rounded-lg border border-slate-700 p-4">
+        <div className="content-card">
           <h3 className="text-sm font-semibold text-slate-300 mb-3">Largest Position at Risk</h3>
           <div className="flex items-center justify-between">
             <div>
@@ -319,7 +314,7 @@ export default function RiskPage() {
         </div>
 
         {/* Average Risk Per Trade */}
-        <div className="bg-slate-800 rounded-lg border border-slate-700 p-4">
+        <div className="content-card">
           <h3 className="text-sm font-semibold text-slate-300 mb-3">Avg Risk Per Trade</h3>
           <div className="flex items-center justify-between">
             <div>

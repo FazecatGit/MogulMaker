@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { AlertCircle, TrendingUp, TrendingDown, Clock, Search, ArrowUp, ArrowDown } from 'lucide-react';
 import { useTrades } from '@/hooks/useTrades';
 import { useTradeStatistics } from '@/hooks/useTradeStatistics';
+import PageHeader from '@/components/PageHeader';
 import apiClient from '@/lib/apiClient';
 
 interface Position {
@@ -38,6 +39,7 @@ export default function TradesPage() {
   const [tradingMessage, setTradingMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [positions, setPositions] = useState<Position[]>([]);
   const [pendingOrders, setPendingOrders] = useState<PendingOrder[]>([]);
+  const [recentTradeExecution, setRecentTradeExecution] = useState(false);
 
   // Fetch positions for unrealized P&L and pending orders
   useEffect(() => {
@@ -102,11 +104,8 @@ export default function TradesPage() {
   // Loading state
   if (isLoading) {
     return (
-      <div className="space-y-6">
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold text-white mb-2">Trade History</h1>
-          <p className="text-slate-400">View and analyze your trading history</p>
-        </div>
+      <div className="w-full space-y-8">
+        <PageHeader title="Trade History" description="View and analyze your trading history" />
 
         {/* Skeleton loaders */}
         <div className="space-y-2">
@@ -124,11 +123,8 @@ export default function TradesPage() {
   // Error state
   if (isError) {
     return (
-      <div className="space-y-6">
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold text-white mb-2">Trade History</h1>
-          <p className="text-slate-400">View and analyze your trading history</p>
-        </div>
+      <div className="w-full space-y-8">
+        <PageHeader title="Trade History" description="View and analyze your trading history" />
 
         <div className="bg-red-900/20 border border-red-700 rounded-lg p-6 flex items-center gap-3">
           <AlertCircle className="w-5 h-5 text-red-400 flex-shrink-0" />
@@ -167,7 +163,7 @@ export default function TradesPage() {
       return;
     }
     
-    const symbol = tradeSymbol.toUpperCase();
+    const symbol = tradeSymbol.trim().toUpperCase();
     
     // Check if there are existing positions or pending orders for this symbol
     const existingPosition = positions.find(p => p.symbol === symbol);
@@ -194,6 +190,7 @@ export default function TradesPage() {
     
     setTradingLoading(true);
     setTradingMessage(null);
+    setRecentTradeExecution(false);
     try {
       await apiClient.post('/execute-trade', {
         symbol: symbol,
@@ -201,8 +198,11 @@ export default function TradesPage() {
         quantity: tradeQuantity,
       });
       setTradingMessage({ type: 'success', text: `Long trade executed for ${symbol}` });
+      setRecentTradeExecution(true);
       setTradeSymbol('');
       setTradeQuantity(1);
+      // Remove animation after 3 seconds
+      setTimeout(() => setRecentTradeExecution(false), 3000);
     } catch (err) {
       setTradingMessage({ type: 'error', text: 'Failed to execute long trade' });
     } finally {
@@ -217,15 +217,20 @@ export default function TradesPage() {
     }
     setTradingLoading(true);
     setTradingMessage(null);
+    setRecentTradeExecution(false);
+    const symbol = tradeSymbol.trim().toUpperCase();
     try {
       await apiClient.post('/execute-trade', {
-        symbol: tradeSymbol.toUpperCase(),
+        symbol: symbol,
         side: 'sell',
         quantity: tradeQuantity,
       });
-      setTradingMessage({ type: 'success', text: `Short trade executed for ${tradeSymbol.toUpperCase()}` });
+      setTradingMessage({ type: 'success', text: `Short trade executed for ${symbol}` });
+      setRecentTradeExecution(true);
       setTradeSymbol('');
       setTradeQuantity(1);
+      // Remove animation after 3 seconds
+      setTimeout(() => setRecentTradeExecution(false), 3000);
     } catch (err) {
       setTradingMessage({ type: 'error', text: 'Failed to execute short trade' });
     } finally {
@@ -234,15 +239,12 @@ export default function TradesPage() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="w-full space-y-8">
       {/* Header */}
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-white mb-2">Trades</h1>
-        <p className="text-slate-400">
-          {trades.length} trade{trades.length !== 1 ? 's' : ''} • {openTrades} open • {closedTrades} closed
-          {pendingOrders.length > 0 && ` • ${pendingOrders.length} pending order${pendingOrders.length !== 1 ? 's' : ''}`}
-        </p>
-      </div>
+      <PageHeader 
+        title="Trades" 
+        description={`${trades.length} trade${trades.length !== 1 ? 's' : ''} • ${openTrades} open • ${closedTrades} closed${pendingOrders.length > 0 ? ` • ${pendingOrders.length} pending order${pendingOrders.length !== 1 ? 's' : ''}` : ''}`} 
+      />
 
       {/* Pending Orders Alert */}
       {pendingOrders.length > 0 && (
@@ -307,7 +309,11 @@ export default function TradesPage() {
       )}
 
       {/* Trading Panel */}
-      <div className="bg-slate-800 rounded-lg p-6 border border-slate-700 space-y-4">
+      <div className={`bg-slate-800 rounded-lg p-6 space-y-4 ${
+        recentTradeExecution 
+          ? 'trading-success-pulse' 
+          : 'border border-slate-700'
+      }`}>
         <h2 className="text-xl font-bold text-white flex items-center gap-2">
           <Search className="w-5 h-5" />
           Execute Trade

@@ -1,6 +1,7 @@
 import dotenv from 'dotenv';
 import express, { Express, Request, Response } from 'express';
 import cors from 'cors';
+import compression from 'compression';
 import watchlistRoutes from './routes/watchlist';
 import backtestRoutes from './routes/backtest';
 import scoutRoutes from './routes/scout';
@@ -23,16 +24,23 @@ dotenv.config();
 const app: Express = express();
 const port = process.env.PORT || 3000;
 
-//rate limiter middleware
+// Middleware - OrderMatters!
+// 1. Enable gzip compression for responses
+app.use(compression({ level: 6 }));
+
+// 2. CORS
+app.use(cors());
+
+// 3. Body parser with larger limits
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ limit: '50mb', extended: true }));
+
+// 4. Rate limiter middleware - Much more lenient for a trading app
 const rateLimiter = new RateLimiter({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  maxRequests: 100 // 100 requests per window
+  windowMs: 1000, // 1 second window
+  maxRequests: 1000 // 1000 requests per second = 3600000 per hour (very generous)
 });
 app.use(rateLimiter.middleware());
-
-// Middleware
-app.use(cors());
-app.use(express.json());
 
 // Middleware to assign request IDs
 app.use(requestIdMiddleware);

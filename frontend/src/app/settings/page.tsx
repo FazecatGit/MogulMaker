@@ -12,6 +12,7 @@ import {
   Eye,
   EyeOff,
 } from 'lucide-react';
+import PageHeader from '@/components/PageHeader';
 import apiClient from '@/lib/apiClient';
 
 interface ApiConfig {
@@ -73,7 +74,8 @@ export default function SettingsPage() {
   const [copiedField, setCopiedField] = useState<string | null>(null);
 
   useEffect(() => {
-    fetchSettings();
+    // Disabled auto-fetch on mount - settings only load if user requests
+    // fetchSettings();
   }, []);
 
   const fetchSettings = async () => {
@@ -129,10 +131,7 @@ export default function SettingsPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-white mb-2">Settings</h1>
-        <p className="text-slate-400">Manage your trading preferences and integrations</p>
-      </div>
+      <PageHeader title="Settings" description="Manage your trading preferences and integrations" />
 
       {/* Status Messages */}
       {error && (

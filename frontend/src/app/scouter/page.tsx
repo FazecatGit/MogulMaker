@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { AlertCircle, TrendingUp, RefreshCw, Target, Zap, Star, Plus, X, Play } from 'lucide-react';
 import { useScout } from '@/hooks/useScout';
+import PageHeader from '@/components/PageHeader';
 import apiClient from '@/lib/apiClient';
 
 export default function ScouterPage() {
@@ -45,8 +46,8 @@ export default function ScouterPage() {
   };
 
   const handleStartScan = () => {
-    console.log('[ScouterPage] Starting fresh scan with score:', minScoreSidebarSlider);
-    setMinScore(minScoreSidebarSlider); // Use sidebar slider value for scan
+    console.log('[ScouterPage] Starting fresh scan with score:', minScoreSlider);
+    setMinScore(minScoreSlider); // Use setup screen slider value for scan
     setOffset(0);
     setAllOpportunities([]);
     setScanTriggered(true);
@@ -77,10 +78,10 @@ export default function ScouterPage() {
   if (!scanTriggered) {
     return (
       <div className="space-y-6">
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold text-white mb-2">Stock Scouter</h1>
-          <p className="text-slate-400">AI-powered stock screening and opportunity detection</p>
-        </div>
+        <PageHeader 
+          title="Stock Scouter" 
+          description="AI-powered stock screening and opportunity detection"
+        />
 
         <div className="bg-slate-800 rounded-lg border border-slate-700 p-8 space-y-6">
           <div>
