@@ -155,3 +155,34 @@ func PerformProfileScan(ctx context.Context, profileName string, minScore float6
 
 	return candidates, totalSymbols, nil
 }
+
+// FormatScoutResults formats scan candidates into the API response structure
+func FormatScoutResults(candidates []types.Candidate, totalScanned, limit int, minScore float64) map[string]interface{} {
+	var opportunities []map[string]interface{}
+	for i, candidate := range candidates {
+		if i >= limit {
+			break
+		}
+
+		opp := map[string]interface{}{
+			"symbol":    candidate.Symbol,
+			"score":     candidate.Score, // Score is already 0-10
+			"analysis":  candidate.Analysis,
+			"rsi":       candidate.RSI,
+			"atr":       candidate.ATR,
+			"timestamp": time.Now().Unix(),
+			"rank":      i + 1,
+		}
+		opportunities = append(opportunities, opp)
+	}
+
+	return map[string]interface{}{
+		"scanned_count":  len(opportunities),
+		"total_symbols":  totalScanned,
+		"min_score":      minScore,
+		"limit":          limit,
+		"opportunities":  opportunities,
+		"scan_timestamp": time.Now().Unix(),
+		"message":        "Real-time stock screening results",
+	}
+}

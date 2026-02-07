@@ -8,6 +8,7 @@ import (
 	"log"
 	"math"
 	"net/http"
+	"os"
 	"sort"
 	"strconv"
 	"sync"
@@ -18,12 +19,14 @@ import (
 	database "github.com/fazecat/mogulmaker/Internal/database/sqlc"
 	"github.com/fazecat/mogulmaker/Internal/handlers/monitoring"
 	"github.com/fazecat/mogulmaker/Internal/handlers/risk"
+	settingshandler "github.com/fazecat/mogulmaker/Internal/handlers/settings"
 	"github.com/fazecat/mogulmaker/Internal/strategy/detection"
 	"github.com/fazecat/mogulmaker/Internal/strategy/indicators"
 	"github.com/fazecat/mogulmaker/Internal/strategy/metrics"
 	"github.com/fazecat/mogulmaker/Internal/strategy/position"
 	"github.com/fazecat/mogulmaker/Internal/utils/analyzer"
 	"github.com/fazecat/mogulmaker/Internal/utils/config"
+	"github.com/fazecat/mogulmaker/Internal/utils/formatting"
 	"github.com/fazecat/mogulmaker/Internal/utils/scanner"
 	"github.com/fazecat/mogulmaker/Internal/utils/scoring"
 	"github.com/shopspring/decimal"
@@ -36,6 +39,7 @@ type API struct {
 	TradeMonitor    *monitoring.Monitor
 	AlpacaClient    *alpaca.Client
 	JWTManager      *JWTManager
+	DB              *sql.DB
 	backtestCache   map[string]map[string]interface{} // backtestID -> results
 	backtestMutex   sync.RWMutex
 }
@@ -872,9 +876,9 @@ func (api *API) HandleBacktest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Parse dates - handle multiple formats (YYYY-MM-DD, DD/MM/YYYY, DD.MM.YYYY)
-	startDateParsed := parseDate(startDate)
-	endDateParsed := parseDate(endDate)
+	// Parse dates using formatting package
+	startDateParsed := formatting.ParseDate(startDate)
+	endDateParsed := formatting.ParseDate(endDate)
 
 	if startDateParsed.IsZero() || endDateParsed.IsZero() {
 		WriteError(w, http.StatusBadRequest, fmt.Sprintf("Invalid date format. Use YYYY-MM-DD (received: %s to %s)", startDate, endDate))
@@ -1451,236 +1455,18 @@ func (api *API) HandleAnalyzeSymbol(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if len(bars) < 14 {
-		WriteError(w, http.StatusBadRequest, "Not enough data to analyze")
+	// Delegate detailed analysis to analyzer package
+	response, err := analyzer.AnalyzeSymbolDetailed(symbol, bars)
+	if err != nil {
+		log.Printf("Error analyzing symbol %s: %v", symbol, err)
+		WriteError(w, http.StatusBadRequest, err.Error())
 		return
-	}
-
-	closes := make([]float64, len(bars))
-	atrBars := make([]indicators.ATRBar, len(bars))
-	for i, bar := range bars {
-		closes[i] = bar.Close
-		atrBars[i] = indicators.ATRBar{
-			High:  bar.High,
-			Low:   bar.Low,
-			Close: bar.Close,
-		}
-	}
-
-	rsiValues, err := indicators.CalculateRSI(closes, 14)
-	if err != nil || len(rsiValues) == 0 {
-		WriteError(w, http.StatusInternalServerError, "Failed to calculate RSI")
-		return
-	}
-
-	atrValues, err := indicators.CalculateATR(atrBars, 14)
-	if err != nil || len(atrValues) == 0 {
-		WriteError(w, http.StatusInternalServerError, "Failed to calculate ATR")
-		return
-	}
-
-	currentPrice := bars[0].Close
-	currentRSI := rsiValues[len(rsiValues)-1]
-	currentATR := atrValues[len(atrValues)-1]
-
-	// SMA 20 - calculate from most recent 20 bars
-	sma20 := 0.0
-	barsForSMA := 20
-	if len(bars) < barsForSMA {
-		barsForSMA = len(bars)
-	}
-	for i := 0; i < barsForSMA; i++ {
-		sma20 += bars[i].Close
-	}
-	sma20 /= float64(barsForSMA)
-
-	trend := "neutral"
-	if currentPrice > sma20*1.02 {
-		trend = "bullish"
-	} else if currentPrice < sma20*0.98 {
-		trend = "bearish"
-	}
-
-	support := indicators.FindSupport(bars)
-	resistance := indicators.FindResistance(bars)
-
-	distanceToSupport := ((currentPrice - support) / support) * 100
-	distanceToResistance := ((resistance - currentPrice) / currentPrice) * 100
-
-	patternDetector := detection.NewPatternDetector()
-	patterns := patternDetector.DetectAllPatterns(bars)
-
-	var bestPattern map[string]interface{}
-	var bestP *detection.PatternSignal
-	if len(patterns) > 0 {
-		// Find the best detected pattern
-		for i := range patterns {
-			if patterns[i].Detected {
-				if bestP == nil || patterns[i].Confidence > bestP.Confidence {
-					bestP = &patterns[i]
-				}
-			}
-		}
-
-		if bestP != nil {
-			bestPattern = map[string]interface{}{
-				"pattern":       bestP.Pattern,
-				"direction":     bestP.Direction,
-				"confidence":    bestP.Confidence,
-				"support_level": bestP.SupportLevel,
-				"resistance":    bestP.ResistanceLevel,
-				"target_up":     bestP.PriceTargetUp,
-				"target_down":   bestP.PriceTargetDown,
-				"stop_loss":     bestP.StopLossLevel,
-				"risk_reward":   bestP.RiskRewardRatio,
-				"reasoning":     bestP.Reasoning,
-			}
-		}
-	}
-
-	// Multi-timeframe analysis (placeholder - would require async calls in typescript api)
-	var multiTimeframe map[string]interface{}
-	// Note: Full multi-timeframe analysis would require fetching 4H and 1H data separately
-	// For now, we return empty placeholder
-	multiTimeframe = map[string]interface{}{
-		"note": "Multi-timeframe analysis requires additional data fetching",
-	}
-
-	// Determine RSI signal
-	rsiSignal := "neutral"
-	if currentRSI > 70 {
-		rsiSignal = "overbought"
-	} else if currentRSI < 30 {
-		rsiSignal = "oversold"
-	}
-
-	// Calculate trading recommendation
-	tradingRec := calculateTradingRecommendation(currentPrice, currentRSI, support, resistance, trend, bestP)
-
-	// Build historical bars data
-	historicalBars := make([]map[string]interface{}, len(bars))
-	for i, bar := range bars {
-		rsiVal := 0.0
-		if i < len(rsiValues) {
-			rsiVal = rsiValues[i]
-		}
-		atrVal := 0.0
-		if i < len(atrValues) {
-			atrVal = atrValues[i]
-		}
-
-		// Parse timestamp string to Unix timestamp
-		timestamp := int64(0)
-		if t, err := time.Parse(time.RFC3339, bar.Timestamp); err == nil {
-			timestamp = t.Unix()
-		}
-
-		historicalBars[i] = map[string]interface{}{
-			"open":      bar.Open,
-			"high":      bar.High,
-			"low":       bar.Low,
-			"close":     bar.Close,
-			"volume":    bar.Volume,
-			"timestamp": timestamp,
-			"rsi":       rsiVal,
-			"atr":       atrVal,
-		}
-	}
-
-	// Reverse bars so oldest dates appear on left, newest on right
-	for i, j := 0, len(historicalBars)-1; i < j; i, j = i+1, j-1 {
-		historicalBars[i], historicalBars[j] = historicalBars[j], historicalBars[i]
-	}
-
-	response := map[string]interface{}{
-		"symbol":                 symbol,
-		"current_price":          currentPrice,
-		"rsi":                    currentRSI,
-		"rsi_signal":             rsiSignal,
-		"atr":                    currentATR,
-		"sma_20":                 sma20,
-		"trend":                  trend,
-		"bars_analyzed":          len(bars),
-		"timestamp":              time.Now().Unix(),
-		"support_level":          support,
-		"resistance_level":       resistance,
-		"distance_to_support":    distanceToSupport,
-		"distance_to_resistance": distanceToResistance,
-		"chart_pattern":          bestPattern,
-		"multi_timeframe":        multiTimeframe,
-		"trading_recommendation": tradingRec,
-		"historical_bars":        historicalBars,
 	}
 
 	WriteJSON(w, http.StatusOK, response)
 }
 
-func calculateTradingRecommendation(price, rsi, support, resistance float64, trend string, pattern *detection.PatternSignal) map[string]interface{} {
-	recommendation := "HOLD"
-	confidence := 50.0
-	reasoning := ""
-
-	// Base recommendation on RSI
-	if rsi < 30 {
-		recommendation = "BUY"
-		confidence = 65.0
-		reasoning = "RSI is oversold"
-
-		// Strengthen if near support
-		if price < support*1.01 {
-			confidence = 80.0
-			reasoning += " and price is at support level"
-		}
-	} else if rsi > 70 {
-		recommendation = "SELL"
-		confidence = 65.0
-		reasoning = "RSI is overbought"
-
-		// Strengthen if near resistance
-		if price > resistance*0.99 {
-			confidence = 80.0
-			reasoning += " and price is at resistance level"
-		}
-	} else {
-		// Check trend
-		if trend == "bullish" {
-			recommendation = "BUY"
-			confidence = 60.0
-			reasoning = "Bullish trend with RSI in neutral zone"
-		} else if trend == "bearish" {
-			recommendation = "SELL"
-			confidence = 60.0
-			reasoning = "Bearish trend with RSI in neutral zone"
-		}
-	}
-
-	// Adjust based on pattern if available
-	if pattern != nil && pattern.Detected {
-		if pattern.Direction == "LONG" && (recommendation == "BUY" || recommendation == "HOLD") {
-			confidence += (pattern.Confidence / 100.0) * 20
-			reasoning += fmt.Sprintf(" - %s pattern supports upside", pattern.Pattern)
-			recommendation = "BUY"
-		} else if pattern.Direction == "SHORT" && (recommendation == "SELL" || recommendation == "HOLD") {
-			confidence += (pattern.Confidence / 100.0) * 20
-			reasoning += fmt.Sprintf(" - %s pattern suggests downside", pattern.Pattern)
-			recommendation = "SELL"
-		}
-	}
-
-	// Cap confidence at 100
-	if confidence > 100 {
-		confidence = 100
-	}
-
-	return map[string]interface{}{
-		"action":     recommendation,
-		"confidence": confidence,
-		"reasoning":  reasoning,
-	}
-}
-
 func (api *API) HandleScoutStocks(w http.ResponseWriter, r *http.Request) {
-
 	limitStr := r.URL.Query().Get("limit")
 	limit := 100
 	if limitStr != "" {
@@ -1708,91 +1494,95 @@ func (api *API) HandleScoutStocks(w http.ResponseWriter, r *http.Request) {
 	log.Printf("Scanning stocks with min score %.1f (limit=%d, offset=%d)", minScore, limit, offset)
 	ctx := context.Background()
 
+	// Delegate to scanner package
 	candidates, totalScanned, err := scanner.PerformProfileScan(ctx, "api_scout", minScore, offset, limit, nil)
 	if err != nil {
-		errMsg := err.Error()
-		log.Printf("SCANNER ERROR: %v", errMsg)
-		WriteError(w, http.StatusInternalServerError, errMsg)
+		log.Printf("SCANNER ERROR: %v", err)
+		WriteError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
 	log.Printf("SCAN COMPLETE: Got %d results from %d total symbols, limit was %d", len(candidates), totalScanned, limit)
 
+	// Sort candidates by score (highest first)
 	sort.SliceStable(candidates, func(i, j int) bool {
 		return candidates[i].Score > candidates[j].Score
 	})
 
-	var opportunities []map[string]interface{}
-	for i, candidate := range candidates {
-		if i >= limit {
-			break
-		}
-
-		rsi := 0.0
-		atr := 0.0
-
-		bars, err := datafeed.GetAlpacaBars(candidate.Symbol, "1Day", 50, "")
-		if err == nil && len(bars) >= 14 {
-			closes := make([]float64, len(bars))
-			atrBars := make([]indicators.ATRBar, len(bars))
-			for j, bar := range bars {
-				closes[j] = bar.Close
-				atrBars[j] = indicators.ATRBar{
-					High:  bar.High,
-					Low:   bar.Low,
-					Close: bar.Close,
-				}
-			}
-
-			rsiValues, err := indicators.CalculateRSI(closes, 14)
-			if err == nil && len(rsiValues) > 0 {
-				rsi = rsiValues[len(rsiValues)-1]
-			}
-
-			atrValues, err := indicators.CalculateATR(atrBars, 14)
-			if err == nil && len(atrValues) > 0 {
-				atr = atrValues[len(atrValues)-1]
-			}
-		}
-
-		opp := map[string]interface{}{
-			"symbol":    candidate.Symbol,
-			"score":     candidate.Score, // Score is already 0-10
-			"analysis":  candidate.Analysis,
-			"rsi":       rsi,
-			"atr":       atr,
-			"timestamp": time.Now().Unix(),
-			"rank":      i + 1,
-		}
-		opportunities = append(opportunities, opp)
-	}
-
-	response := map[string]interface{}{
-		"scanned_count":  len(opportunities),
-		"total_symbols":  totalScanned,
-		"min_score":      minScore,
-		"limit":          limit,
-		"opportunities":  opportunities,
-		"scan_timestamp": time.Now().Unix(),
-		"message":        "Real-time stock screening results",
-	}
-
+	// Format results using scanner package
+	response := scanner.FormatScoutResults(candidates, totalScanned, limit, minScore)
 	WriteJSON(w, http.StatusOK, response)
 }
 
-func parseDate(dateStr string) time.Time {
-	formats := []string{
-		"2006-01-02", // YYYY-MM-DD (standard)
-		"02/01/2006", // DD/MM/YYYY
-		"02.01.2006", // DD.MM.YYYY
-		"01-02-2006", // MM-DD-YYYY (US format)
+func (api *API) HandleGetSettings(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	// Get trading settings
+	autoStopLoss := settingshandler.GetSetting(api.DB, "auto_stop_loss", false).(bool)
+	autoProfitTaking := settingshandler.GetSetting(api.DB, "auto_profit_taking", false).(bool)
+
+	tradingSettings := settingshandler.TradeSettings{
+		AutoStopLoss:     autoStopLoss,
+		AutoProfitTaking: autoProfitTaking,
 	}
 
-	for _, format := range formats {
-		if t, err := time.Parse(format, dateStr); err == nil {
-			return t
+	// Get API settings with masking
+	alpacaKey := settingshandler.GetSetting(api.DB, "alpaca_api_key", "").(string)
+	alpacaSecret := settingshandler.GetSetting(api.DB, "alpaca_api_secret", "").(string)
+	finnhubKey := settingshandler.GetSetting(api.DB, "finnhub_api_key", "").(string)
+
+	apiSettings := map[string]string{
+		"alpacaKey":    settingshandler.MaskSensitiveValue(alpacaKey),
+		"alpacaSecret": settingshandler.MaskSensitiveValue(alpacaSecret),
+		"finnhubKey":   settingshandler.MaskSensitiveValue(finnhubKey),
+	}
+
+	response := settingshandler.SettingsResponse{
+		Trading: tradingSettings,
+		API:     apiSettings,
+		Message: "Settings retrieved successfully",
+	}
+
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(response)
+}
+
+// HandleUpdateSettings updates settings for the current user
+func (api *API) HandleUpdateSettings(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	var payload settingshandler.SettingsPayload
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		WriteError(w, http.StatusBadRequest, "Invalid request payload")
+		return
+	}
+
+	// Update trading settings
+	if payload.Trading != nil {
+		settingshandler.SetSetting(api.DB, "auto_stop_loss", payload.Trading.AutoStopLoss)
+		settingshandler.SetSetting(api.DB, "auto_profit_taking", payload.Trading.AutoProfitTaking)
+	}
+
+	// Update API settings
+	if payload.API != nil {
+		if payload.API.AlpacaKey != "" {
+			settingshandler.SetSetting(api.DB, "alpaca_api_key", payload.API.AlpacaKey)
+			os.Setenv("ALPACA_API_KEY", payload.API.AlpacaKey)
+		}
+		if payload.API.AlpacaSecret != "" {
+			settingshandler.SetSetting(api.DB, "alpaca_api_secret", payload.API.AlpacaSecret)
+			os.Setenv("ALPACA_API_SECRET", payload.API.AlpacaSecret)
+		}
+		if payload.API.FinnhubKey != "" {
+			settingshandler.SetSetting(api.DB, "finnhub_api_key", payload.API.FinnhubKey)
+			os.Setenv("FINNHUB_API_KEY", payload.API.FinnhubKey)
 		}
 	}
 
-	return time.Time{} // Return zero time if parsing fails
+	response := map[string]string{
+		"message": "Settings updated successfully",
+	}
+
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(response)
 }

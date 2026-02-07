@@ -3,6 +3,8 @@
 import { useState, useEffect } from 'react';
 import { AlertCircle, AlertTriangle, TrendingDown, DollarSign, Activity, RefreshCw } from 'lucide-react';
 import PageHeader from '@/components/PageHeader';
+import StatCard from '@/components/ui/StatCard';
+import { formatCurrency } from '@/lib/formatters';
 import apiClient from '@/lib/apiClient';
 
 interface RiskAlert {
@@ -175,95 +177,34 @@ export default function RiskPage() {
 
       {/* Key Metrics Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        {/* Daily Loss */}
-        <div className="content-card">
-          <div className="flex items-center justify-between mb-3">
-            <span className="text-slate-400 text-sm font-semibold">Daily Loss</span>
-            <DollarSign className="w-4 h-4 text-slate-500" />
-          </div>
-          <div className="text-2xl font-bold text-white mb-3">
-            ${metrics?.dailyLoss.toLocaleString() || 0}
-          </div>
-          <div className="space-y-2">
-            <div className="flex justify-between text-xs text-slate-400">
-              <span>Usage</span>
-              <span>{getRiskPercentage(metrics?.dailyLoss || 0, metrics?.dailyLossLimit || 1)}%</span>
-            </div>
-            <div className="w-full bg-slate-700 rounded-full h-2">
-              <div
-                className={`h-2 rounded-full transition-all ${getRiskBarColor(
-                  getRiskPercentage(metrics?.dailyLoss || 0, metrics?.dailyLossLimit || 1)
-                )}`}
-                style={{
-                  width: `${Math.min(
-                    100,
-                    getRiskPercentage(metrics?.dailyLoss || 0, metrics?.dailyLossLimit || 1)
-                  )}%`,
-                }}
-              ></div>
-            </div>
-            <div className="text-xs text-slate-500">
-              Limit: ${metrics?.dailyLossLimit.toLocaleString() || 0}
-            </div>
-          </div>
-        </div>
-
-        {/* Portfolio Risk */}
-        <div className="content-card">
-          <div className="flex items-center justify-between mb-3">
-            <span className="text-slate-400 text-sm font-semibold">Portfolio Risk</span>
-            <TrendingDown className="w-4 h-4 text-slate-500" />
-          </div>
-          <div className="text-2xl font-bold text-white mb-3">{metrics?.portfolioRisk}%</div>
-          <div className="text-xs text-slate-400">
-            <p>Risk per position allocation</p>
-            <p className="mt-2 text-yellow-400">⚠️ Approaching threshold (3%)</p>
-          </div>
-        </div>
-
-        {/* Max Drawdown */}
-        <div className="content-card">
-          <div className="flex items-center justify-between mb-3">
-            <span className="text-slate-400 text-sm font-semibold">Max Drawdown</span>
-            <TrendingDown className="w-4 h-4 text-slate-500" />
-          </div>
-          <div className="text-2xl font-bold text-white mb-3">
-            {metrics?.maxDrawdownPercent}%
-          </div>
-          <div className="text-xs text-slate-400">
-            ${metrics?.maxDrawdown.toLocaleString() || 0} from peak
-          </div>
-        </div>
-
-        {/* Open Positions */}
-        <div className="content-card">
-          <div className="flex items-center justify-between mb-3">
-            <span className="text-slate-400 text-sm font-semibold">Open Positions</span>
-            <Activity className="w-4 h-4 text-slate-500" />
-          </div>
-          <div className="text-2xl font-bold text-white mb-3">
-            {metrics?.openPositions}/{metrics?.positionLimit}
-          </div>
-          <div className="space-y-2">
-            <div className="flex justify-between text-xs text-slate-400">
-              <span>Usage</span>
-              <span>
-                {getRiskPercentage(metrics?.openPositions || 0, metrics?.positionLimit || 1)}%
-              </span>
-            </div>
-            <div className="w-full bg-slate-700 rounded-full h-2">
-              <div
-                className="h-2 rounded-full bg-blue-600 transition-all"
-                style={{
-                  width: `${Math.min(
-                    100,
-                    getRiskPercentage(metrics?.openPositions || 0, metrics?.positionLimit || 1)
-                  )}%`,
-                }}
-              ></div>
-            </div>
-          </div>
-        </div>
+        <StatCard
+          label="Daily Loss"
+          value={formatCurrency(metrics?.dailyLoss || 0)}
+          subtext={`Limit: ${formatCurrency(metrics?.dailyLossLimit || 0)}`}
+          variant="default"
+          icon={<DollarSign className="w-4 h-4" />}
+        />
+        <StatCard
+          label="Portfolio Risk"
+          value={`${metrics?.portfolioRisk || 0}%`}
+          subtext="Risk per position allocation"
+          variant={metrics?.portfolioRisk && metrics.portfolioRisk >= 3 ? "warning" : "default"}
+          icon={<TrendingDown className="w-4 h-4" />}
+        />
+        <StatCard
+          label="Max Drawdown"
+          value={`${metrics?.maxDrawdownPercent || 0}%`}
+          subtext={`${formatCurrency(metrics?.maxDrawdown || 0)} from peak`}
+          variant={metrics?.maxDrawdownPercent && metrics.maxDrawdownPercent <= -10 ? "negative" : "default"}
+          icon={<TrendingDown className="w-4 h-4" />}
+        />
+        <StatCard
+          label="Open Positions"
+          value={`${metrics?.openPositions || 0}/${metrics?.positionLimit || 0}`}
+          subtext={`${getRiskPercentage(metrics?.openPositions || 0, metrics?.positionLimit || 1)}% capacity used`}
+          variant="default"
+          icon={<Activity className="w-4 h-4" />}
+        />
       </div>
 
       {/* Alerts Section */}

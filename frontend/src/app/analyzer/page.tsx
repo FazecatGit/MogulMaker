@@ -1,19 +1,15 @@
 'use client';
 
 import React, { useState } from 'react';
-import { RefreshCw, Search, TrendingUp, TrendingDown, ZoomIn, ZoomOut } from 'lucide-react';
+import { RefreshCw, Search, TrendingUp, TrendingDown } from 'lucide-react';
 import PageHeader from '@/components/PageHeader';
-import {
-  LineChart,
-  Line,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  Legend,
-  ResponsiveContainer,
-} from 'recharts';
+import Button from '@/components/ui/Button';
+import StatCard from '@/components/ui/StatCard';
+import ErrorAlert from '@/components/ui/ErrorAlert';
+import PriceChart from '@/components/Charts/PriceChart';
 import apiClient from '@/lib/apiClient';
+import { formatCurrency, formatPercent, formatNumber } from '@/lib/formatters';
+import { getPnLColor, getStatCardVariant, getTrendColor, getScoreColor } from '@/lib/colorHelpers';
 
 export default function AnalyzerPage() {
   const [symbol, setSymbol] = useState('');
@@ -122,21 +118,21 @@ export default function AnalyzerPage() {
               />
               <Search className="absolute right-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-slate-500" />
             </div>
-            <button
-              type="submit"
-              disabled={isLoading}
-              className="bg-blue-600 hover:bg-blue-700 disabled:bg-slate-700 disabled:cursor-not-allowed rounded-lg px-6 py-3 font-semibold flex items-center gap-2 transition"
+            <Button
+              variant="primary"
+              icon={isLoading && <RefreshCw className="w-4 h-4 animate-spin" />}
+              loading={isLoading}
+              onClick={() => analyzeStock({ preventDefault: () => {} } as React.FormEvent)}
             >
-              {isLoading && <RefreshCw className="w-4 h-4 animate-spin" />}
               {isLoading ? 'Analyzing...' : 'Analyze'}
-            </button>
+            </Button>
           </div>
         </form>
 
         {/* Error Message */}
         {error && (
-          <div className="bg-red-900/30 border border-red-700 rounded-lg p-4 mb-6 text-red-300">
-            {error}
+          <div className="mb-6">
+            <ErrorAlert message={error} />
           </div>
         )}
 
@@ -147,47 +143,43 @@ export default function AnalyzerPage() {
             <div className="flex justify-between items-center mb-6">
               <h2 className="text-3xl font-bold">{symbol} Analysis</h2>
               <div className="flex gap-2">
-                <button
+                <Button
+                  variant="success"
+                  loading={buyingSymbol === symbol}
                   onClick={handleBuyStock}
-                  disabled={buyingSymbol === symbol}
-                  className="px-4 py-2 bg-green-600 hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed rounded font-semibold text-white transition"
                 >
-                  {buyingSymbol === symbol ? 'Buying...' : 'Buy'}
-                </button>
-                <button
+                  Buy
+                </Button>
+                <Button
+                  variant="danger"
+                  loading={sellingSymbol === symbol}
                   onClick={handleSellStock}
-                  disabled={sellingSymbol === symbol}
-                  className="px-4 py-2 bg-red-600 hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed rounded font-semibold text-white transition"
                 >
-                  {sellingSymbol === symbol ? 'Selling...' : 'Sell'}
-                </button>
-                <button
+                  Sell
+                </Button>
+                <Button
+                  variant="secondary"
                   onClick={clearAnalysis}
-                  className="text-slate-400 hover:text-white transition px-2"
                 >
                   Clear
-                </button>
+                </Button>
               </div>
             </div>
 
             {/* Core Metrics Grid */}
             <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
               {/* Current Price */}
-              <div className="bg-slate-800 border border-slate-700 rounded-lg p-4">
-                <p className="text-slate-400 text-xs font-semibold mb-2 uppercase">Price</p>
-                <p className="text-white font-bold text-2xl">
-                  ${analysisData.current_price?.toFixed(2) || 'N/A'}
-                </p>
-              </div>
+              <StatCard
+                label="Price"
+                value={formatCurrency(analysisData.current_price || 0)}
+              />
 
               {/* RSI */}
-              <div className="bg-slate-800 border border-slate-700 rounded-lg p-4">
-                <p className="text-slate-400 text-xs font-semibold mb-2 uppercase">RSI</p>
-                <p className="text-white font-bold text-2xl">
-                  {analysisData.rsi?.toFixed(1) || 'N/A'}
-                </p>
-                <p className="text-xs text-slate-400 mt-2">
-                  {analysisData.rsi ? (
+              <StatCard
+                label="RSI"
+                value={analysisData.rsi?.toFixed(1) || 'N/A'}
+                subtext={
+                  analysisData.rsi ? (
                     analysisData.rsi > 70
                       ? '🔴 Overbought'
                       : analysisData.rsi < 30
@@ -195,33 +187,27 @@ export default function AnalyzerPage() {
                         : '🟡 Neutral'
                   ) : (
                     'N/A'
-                  )}
-                </p>
-              </div>
+                  )
+                }
+              />
 
               {/* ATR (Raw Value) */}
-              <div className="bg-slate-800 border border-slate-700 rounded-lg p-4">
-                <p className="text-slate-400 text-xs font-semibold mb-2 uppercase">ATR</p>
-                <p className="text-white font-bold text-2xl">
-                  ${analysisData.atr?.toFixed(2) || 'N/A'}
-                </p>
-                <p className="text-xs text-slate-400 mt-2">
-                  14-period avg range
-                </p>
-              </div>
+              <StatCard
+                label="ATR"
+                value={formatCurrency(analysisData.atr || 0)}
+                subtext="14-period avg range"
+              />
 
               {/* Volatility % */}
-              <div className="bg-slate-800 border border-slate-700 rounded-lg p-4">
-                <p className="text-slate-400 text-xs font-semibold mb-2 uppercase">Volatility %</p>
-                <p className="text-white font-bold text-2xl">
-                  {analysisData.atr && analysisData.current_price ? (
-                    `${((analysisData.atr / analysisData.current_price) * 100).toFixed(2)}%`
-                  ) : (
-                    'N/A'
-                  )}
-                </p>
-                <p className="text-xs text-slate-400 mt-2">
-                  {analysisData.atr && analysisData.current_price ? (
+              <StatCard
+                label="Volatility %"
+                value={
+                  analysisData.atr && analysisData.current_price
+                    ? formatPercent((analysisData.atr / analysisData.current_price) * 0.01)
+                    : 'N/A'
+                }
+                subtext={
+                  analysisData.atr && analysisData.current_price ? (
                     (() => {
                       const atrPercent = (analysisData.atr / analysisData.current_price) * 100;
                       if (atrPercent > 3) return '🔴 High';
@@ -230,21 +216,19 @@ export default function AnalyzerPage() {
                     })()
                   ) : (
                     'N/A'
-                  )}
-                </p>
-              </div>
+                  )
+                }
+              />
 
               {/* SMA 20 */}
-              <div className="bg-slate-800 border border-slate-700 rounded-lg p-4">
-                <p className="text-slate-400 text-xs font-semibold mb-2 uppercase">SMA 20</p>
-                <p className="text-white font-bold text-2xl">
-                  ${analysisData.sma_20?.toFixed(2) || 'N/A'}
-                </p>
-              </div>
+              <StatCard
+                label="SMA 20"
+                value={formatCurrency(analysisData.sma_20 || 0)}
+              />
 
               {/* Trend */}
-              <div className="bg-slate-800 border border-slate-700 rounded-lg p-4">
-                <p className="text-slate-400 text-xs font-semibold mb-2 uppercase">Trend</p>
+              <div className="bg-slate-700/50 rounded-lg p-4 border border-slate-600">
+                <p className="text-slate-400 text-xs mb-1 font-medium">TREND</p>
                 <div className="flex items-center gap-2">
                   {analysisData.trend === 'bullish' ? (
                     <TrendingUp className="w-5 h-5 text-green-400" />
@@ -268,144 +252,41 @@ export default function AnalyzerPage() {
 
             {/* Historical Price Chart */}
             {analysisData.historical_bars && analysisData.historical_bars.length > 0 && (
-              <div className="bg-slate-800 border border-slate-700 rounded-lg p-6">
-                <div className="flex justify-between items-center mb-2">
-                  <h3 className="text-xl font-bold">Price History ({analysisData.historical_bars.length} days)</h3>
-                  <div className="text-sm text-slate-400">
-                    {analysisData.historical_bars.length} trading days
-                  </div>
-                </div>
-                
-                {/* Chart Container */}
-                <div className="bg-slate-900/50 rounded p-4 overflow-x-auto mb-6">
-                  <ResponsiveContainer width="100%" height={400}>
-                    <LineChart
-                      data={analysisData.historical_bars.map((bar: any) => ({
-                        ...bar,
-                        date: new Date(bar.timestamp * 1000).toLocaleDateString('en-US', { 
-                          month: 'short', 
-                          day: 'numeric' 
-                        }),
-                        fullDate: new Date(bar.timestamp * 1000).toLocaleDateString(),
-                      }))}
-                      margin={{ top: 5, right: 30, left: 0, bottom: 5 }}
-                    >
-                      <defs>
-                        <linearGradient id="closeGradient" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor="#22c55e" stopOpacity={0.8}/>
-                          <stop offset="95%" stopColor="#22c55e" stopOpacity={0}/>
-                        </linearGradient>
-                      </defs>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
-                      <XAxis 
-                        dataKey="date" 
-                        stroke="#64748b"
-                        tick={{ fontSize: 12 }}
-                        interval={Math.floor(analysisData.historical_bars.length / 10)}
-                      />
-                      <YAxis 
-                        stroke="#64748b"
-                        tick={{ fontSize: 12 }}
-                        domain={['dataMin - 5', 'dataMax + 5']}
-                        label={{ value: 'Price ($)', angle: -90, position: 'insideLeft' }}
-                      />
-                      <Tooltip 
-                        contentStyle={{
-                          backgroundColor: '#1e293b',
-                          border: '1px solid #475569',
-                          borderRadius: '6px',
-                        }}
-                        labelStyle={{ color: '#e2e8f0' }}
-                        formatter={(value: any, name: string | undefined) => {
-                          if (!name) return [value, name];
-                          if (['open', 'high', 'low', 'close'].includes(name)) {
-                            return [`$${value.toFixed(2)}`, name.toUpperCase()];
-                          }
-                          if (name === 'volume') {
-                            return [`${(value / 1000000).toFixed(1)}M`, 'Volume'];
-                          }
-                          if (['rsi', 'atr'].includes(name)) {
-                            return [value.toFixed(2), name.toUpperCase()];
-                          }
-                          return [value, name];
-                        }}
-                        cursor={{ stroke: '#64748b', strokeDasharray: '5 5' }}
-                      />
-                      <Legend 
-                        wrapperStyle={{ paddingTop: '20px' }}
-                        iconType="line"
-                      />
-                      <Line 
-                        type="monotone" 
-                        dataKey="close" 
-                        stroke="#22c55e" 
-                        dot={false}
-                        strokeWidth={2}
-                        name="Close"
-                        isAnimationActive={false}
-                      />
-                      <Line 
-                        type="monotone" 
-                        dataKey="high" 
-                        stroke="#6b7280" 
-                        dot={false}
-                        strokeWidth={1}
-                        name="High"
-                        strokeDasharray="5 5"
-                        isAnimationActive={false}
-                      />
-                      <Line 
-                        type="monotone" 
-                        dataKey="low" 
-                        stroke="#6b7280" 
-                        dot={false}
-                        strokeWidth={1}
-                        name="Low"
-                        strokeDasharray="5 5"
-                        isAnimationActive={false}
-                      />
-                    </LineChart>
-                  </ResponsiveContainer>
-                </div>
+              <>
+                <PriceChart
+                  data={analysisData.historical_bars}
+                  title={`Price History (${analysisData.historical_bars.length} days)`}
+                  daysLabel={`${analysisData.historical_bars.length} trading days`}
+                  height={400}
+                />
 
                 {/* Price Statistics */}
-                <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mt-6 text-sm">
-                  <div className="bg-slate-700/30 rounded p-3">
-                    <p className="text-slate-400 text-xs mb-1">Highest</p>
-                    <p className="font-bold text-green-400 text-lg">
-                      ${Math.max(...analysisData.historical_bars.map((b: any) => b.high)).toFixed(2)}
-                    </p>
-                  </div>
-                  <div className="bg-slate-700/30 rounded p-3">
-                    <p className="text-slate-400 text-xs mb-1">Lowest</p>
-                    <p className="font-bold text-red-400 text-lg">
-                      ${Math.min(...analysisData.historical_bars.map((b: any) => b.low)).toFixed(2)}
-                    </p>
-                  </div>
-                  <div className="bg-slate-700/30 rounded p-3">
-                    <p className="text-slate-400 text-xs mb-1">Avg Volume</p>
-                    <p className="font-bold text-white text-lg">
-                      {(analysisData.historical_bars.reduce((sum: number, b: any) => sum + b.volume, 0) / analysisData.historical_bars.length / 1000000).toFixed(1)}M
-                    </p>
-                  </div>
-                  <div className="bg-slate-700/30 rounded p-3">
-                    <p className="text-slate-400 text-xs mb-1">Range</p>
-                    <p className="font-bold text-white text-lg">
-                      ${(Math.max(...analysisData.historical_bars.map((b: any) => b.high)) - Math.min(...analysisData.historical_bars.map((b: any) => b.low))).toFixed(2)}
-                    </p>
-                  </div>
-                  <div className="bg-slate-700/30 rounded p-3">
-                    <p className="text-slate-400 text-xs mb-1">% Change</p>
-                    <p className={`font-bold text-lg ${
-                      analysisData.historical_bars[analysisData.historical_bars.length - 1].close >= analysisData.historical_bars[0].open
-                        ? 'text-green-400'
-                        : 'text-red-400'
-                    }`}>
-                      {(((analysisData.historical_bars[analysisData.historical_bars.length - 1].close - analysisData.historical_bars[0].open) / analysisData.historical_bars[0].open) * 100).toFixed(2)}%
-                    </p>
-                  </div>
+                <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+                  <StatCard
+                    label="Highest"
+                    value={formatCurrency(Math.max(...analysisData.historical_bars.map((b: any) => b.high)))}
+                    variant="positive"
+                  />
+                  <StatCard
+                    label="Lowest"
+                    value={formatCurrency(Math.min(...analysisData.historical_bars.map((b: any) => b.low)))}
+                    variant="negative"
+                  />
+                  <StatCard
+                    label="Avg Volume"
+                    value={formatNumber(analysisData.historical_bars.reduce((sum: number, b: any) => sum + b.volume, 0) / analysisData.historical_bars.length / 1000000, 1) + 'M'}
+                  />
+                  <StatCard
+                    label="Range"
+                    value={formatCurrency(Math.max(...analysisData.historical_bars.map((b: any) => b.high)) - Math.min(...analysisData.historical_bars.map((b: any) => b.low)))}
+                  />
+                  <StatCard
+                    label="% Change"
+                    value={formatPercent((analysisData.historical_bars[analysisData.historical_bars.length - 1].close - analysisData.historical_bars[0].open) / analysisData.historical_bars[0].open)}
+                    variant={getStatCardVariant(analysisData.historical_bars[analysisData.historical_bars.length - 1].close - analysisData.historical_bars[0].open)}
+                  />
                 </div>
-              </div>
+              </>
             )}
 
             {/* Support & Resistance Section */}

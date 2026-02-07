@@ -5,7 +5,13 @@ import { AlertCircle, TrendingUp, TrendingDown, Clock, Search, ArrowUp, ArrowDow
 import { useTrades } from '@/hooks/useTrades';
 import { useTradeStatistics } from '@/hooks/useTradeStatistics';
 import PageHeader from '@/components/PageHeader';
+import Button from '@/components/ui/Button';
+import StatCard from '@/components/ui/StatCard';
+import ErrorAlert from '@/components/ui/ErrorAlert';
+import ResponsiveTable from '@/components/Tables/ResponsiveTable';
 import apiClient from '@/lib/apiClient';
+import { formatCurrency, formatPercent, formatDuration } from '@/lib/formatters';
+import { getPnLColor, getStatCardVariant } from '@/lib/colorHelpers';
 
 interface Position {
   symbol: string;
@@ -125,16 +131,10 @@ export default function TradesPage() {
     return (
       <div className="w-full space-y-8">
         <PageHeader title="Trade History" description="View and analyze your trading history" />
-
-        <div className="bg-red-900/20 border border-red-700 rounded-lg p-6 flex items-center gap-3">
-          <AlertCircle className="w-5 h-5 text-red-400 flex-shrink-0" />
-          <div>
-            <p className="text-red-400 font-semibold">Failed to load trade history</p>
-            <p className="text-red-300 text-sm">
-              {error instanceof Error ? error.message : 'Unknown error'}
-            </p>
-          </div>
-        </div>
+        <ErrorAlert 
+          title="Failed to load trade history"
+          message={error instanceof Error ? error.message : 'Unknown error'}
+        />
       </div>
     );
   }
@@ -143,19 +143,6 @@ export default function TradesPage() {
   const openTrades = trades.filter((t) => t.status === 'open').length;
   const closedTrades = trades.filter((t) => t.status === 'closed').length;
   const totalPnL = trades.reduce((sum, t) => sum + (typeof t.realized_pl === 'number' ? t.realized_pl : parseFloat(t.realized_pl || '0')), 0);
-
-  const formatDuration = (ms?: number) => {
-    if (!ms || ms <= 0) return 'Ongoing';
-    const seconds = Math.floor(ms / 1000);
-    const minutes = Math.floor(seconds / 60);
-    const hours = Math.floor(minutes / 60);
-    const days = Math.floor(hours / 24);
-
-    if (days > 0) return `${days}d`;
-    if (hours > 0) return `${hours}h`;
-    if (minutes > 0) return `${minutes}m`;
-    return `${seconds}s`;
-  };
 
   const handleLongTrade = async () => {
     if (!tradeSymbol.trim()) {
@@ -414,224 +401,136 @@ export default function TradesPage() {
       </div>
 
       {/* Trades Table */}
-      {trades.length > 0 ? (
-        <div className="bg-slate-800 rounded-lg border border-slate-700 overflow-hidden">
-          {/* Desktop View - Table */}
-          <div className="hidden md:block overflow-x-auto">
-            <table className="w-full">
-              <thead className="bg-slate-700/50 border-b border-slate-700">
-                <tr>
-                  <th className="px-6 py-3 text-left text-sm font-semibold text-slate-300">
-                    Symbol
-                  </th>
-                  <th className="px-6 py-3 text-center text-sm font-semibold text-slate-300">
-                    Side
-                  </th>
-                  <th className="px-6 py-3 text-right text-sm font-semibold text-slate-300">
-                    Entry Price
-                  </th>
-                  <th className="px-6 py-3 text-right text-sm font-semibold text-slate-300">
-                    Exit Price
-                  </th>
-                  <th className="px-6 py-3 text-right text-sm font-semibold text-slate-300">
-                    Quantity
-                  </th>
-                  <th className="px-6 py-3 text-left text-sm font-semibold text-slate-300">
-                    Entry Time
-                  </th>
-                  <th className="px-6 py-3 text-center text-sm font-semibold text-slate-300">
-                    Duration
-                  </th>
-                  <th className="px-6 py-3 text-right text-sm font-semibold text-slate-300">
-                    P&L
-                  </th>
-                  <th className="px-6 py-3 text-right text-sm font-semibold text-slate-300">
-                    Return %
-                  </th>
-                  <th className="px-6 py-3 text-center text-sm font-semibold text-slate-300">
-                    Status
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-700">
-                {trades.map((trade) => {
-                  const position = positionMap.get(trade.symbol);
-                  const pnl = trade.status === 'open' 
-                    ? (position?.unrealized_pl || 0)
-                    : (trade.realized_pl || 0);
-                  const pnlPercent = trade.status === 'open'
-                    ? ((position?.unrealized_plpc || 0) * 100)
-                    : ((trade.realized_plpc || 0) * 100);
-                  const isPositive = pnl >= 0;
-
-                  return (
-                    <tr key={trade.id} className="hover:bg-slate-700/30 transition">
-                      <td className="px-6 py-4">
-                        <div className="font-semibold text-white">{trade.symbol}</div>
-                        <div className="text-xs text-slate-400">{trade.exchange}</div>
-                      </td>
-                      <td className="px-6 py-4 text-center">
-                        <span className={`px-3 py-1 rounded text-sm font-semibold ${
-                          trade.side === 'buy'
-                            ? 'bg-green-900/30 text-green-400'
-                            : 'bg-red-900/30 text-red-400'
-                        }`}>
-                          {trade.side.toUpperCase()}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 text-right text-slate-300">
-                        ${typeof trade.entry_price === 'number' ? trade.entry_price.toFixed(2) : parseFloat(trade.entry_price).toFixed(2)}
-                      </td>
-                      <td className="px-6 py-4 text-right text-slate-300">
-                        {trade.exit_price ? `$${typeof trade.exit_price === 'number' ? trade.exit_price.toFixed(2) : parseFloat(trade.exit_price).toFixed(2)}` : '-'}
-                      </td>
-                      <td className="px-6 py-4 text-right text-white">
-                        {typeof trade.qty === 'number' ? trade.qty.toFixed(0) : parseFloat(trade.qty).toFixed(0)}
-                      </td>
-                      <td className="px-6 py-4 text-left text-slate-300 text-sm">
-                        {new Date(trade.entry_time).toLocaleDateString('en-US', {
-                          month: 'short',
-                          day: 'numeric',
-                          hour: '2-digit',
-                          minute: '2-digit',
-                        })}
-                      </td>
-                      <td className="px-6 py-4 text-center text-slate-300 text-sm">
-                        <div className="flex items-center justify-center gap-1">
-                          <Clock className="w-4 h-4" />
-                          {formatDuration(trade.duration_ms)}
-                        </div>
-                      </td>
-                      <td
-                        className={`px-6 py-4 text-right font-semibold ${
-                          isPositive ? 'text-green-400' : 'text-red-400'
-                        }`}
-                      >
-                        <div className="flex items-center justify-end gap-1">
-                          {isPositive ? (
-                            <TrendingUp className="w-4 h-4" />
-                          ) : (
-                            <TrendingDown className="w-4 h-4" />
-                          )}
-                          {isPositive ? '+' : ''}${Math.abs(pnl).toFixed(2)}
-                        </div>
-                      </td>
-                      <td
-                        className={`px-6 py-4 text-right font-semibold ${
-                          isPositive ? 'text-green-400' : 'text-red-400'
-                        }`}
-                      >
-                        {isPositive ? '+' : ''}{pnlPercent.toFixed(2)}%
-                      </td>
-                      <td className="px-6 py-4 text-center">
-                        <span className={`px-3 py-1 rounded text-xs font-semibold ${
-                          trade.status === 'closed'
-                            ? 'bg-slate-700 text-slate-300'
-                            : 'bg-blue-900/30 text-blue-400'
-                        }`}>
-                          {trade.status.charAt(0).toUpperCase() + trade.status.slice(1)}
-                        </span>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-
-          {/* Mobile View - Cards */}
-          <div className="md:hidden space-y-3 p-4">
-            {trades.map((trade) => {
+      <ResponsiveTable
+        data={trades}
+        keyExtractor={(trade) => trade.id}
+        columns={[
+          {
+            key: 'symbol',
+            label: 'Symbol',
+            render: (val, trade) => (
+              <div>
+                <div className="font-semibold text-white">{val}</div>
+                <div className="text-xs text-slate-400">{trade.exchange}</div>
+              </div>
+            ),
+          },
+          {
+            key: 'side',
+            label: 'Side',
+            align: 'center',
+            render: (val) => (
+              <span className={`px-3 py-1 rounded text-sm font-semibold ${
+                val === 'buy' ? 'bg-green-900/30 text-green-400' : 'bg-red-900/30 text-red-400'
+              }`}>
+                {val.toUpperCase()}
+              </span>
+            ),
+          },
+          {
+            key: 'entry_price',
+            label: 'Entry Price',
+            align: 'right',
+            render: (val) => formatCurrency(typeof val === 'number' ? val : parseFloat(val)),
+          },
+          {
+            key: 'exit_price',
+            label: 'Exit Price',
+            align: 'right',
+            render: (val) => val ? formatCurrency(typeof val === 'number' ? val : parseFloat(val)) : '-',
+          },
+          {
+            key: 'qty',
+            label: 'Quantity',
+            align: 'right',
+            render: (val) => (typeof val === 'number' ? val : parseFloat(val)).toFixed(0),
+          },
+          {
+            key: 'entry_time',
+            label: 'Entry Time',
+            render: (val) => new Date(val).toLocaleDateString('en-US', {
+              month: 'short',
+              day: 'numeric',
+              hour: '2-digit',
+              minute: '2-digit',
+            }),
+            mobileHidden: true,
+          },
+          {
+            key: 'duration_ms',
+            label: 'Duration',
+            align: 'center',
+            render: (val) => (
+              <div className="flex items-center justify-center gap-1">
+                <Clock className="w-4 h-4" />
+                {formatDuration((val || 0) / 1000)}
+              </div>
+            ),
+          },
+          {
+            key: 'realized_pl',
+            label: 'P&L',
+            align: 'right',
+            render: (val, trade) => {
               const position = positionMap.get(trade.symbol);
-              const pnl = trade.status === 'open' 
-                ? (position?.unrealized_pl || 0)
-                : (trade.realized_pl || 0);
-              const pnlPercent = trade.status === 'open'
-                ? ((position?.unrealized_plpc || 0) * 100)
-                : ((trade.realized_plpc || 0) * 100);
-              const isPositive = pnl >= 0;
-
+              const pnl = trade.status === 'open' ? (position?.unrealized_pl || 0) : (val || 0);
               return (
-                <div key={trade.id} className="bg-slate-700/50 rounded-lg p-4 border border-slate-600">
-                  <div className="flex justify-between items-start mb-3">
-                    <div>
-                      <div className="font-semibold text-white text-lg">{trade.symbol}</div>
-                      <div className="text-xs text-slate-400">{trade.exchange}</div>
-                    </div>
-                    <span className={`px-2 py-1 rounded text-xs font-semibold ${
-                      trade.side === 'buy'
-                        ? 'bg-green-900/30 text-green-400'
-                        : 'bg-red-900/30 text-red-400'
-                    }`}>
-                      {trade.side.toUpperCase()}
-                    </span>
-                  </div>
-
-                  <div className="space-y-2 text-sm mb-3">
-                    <div className="flex justify-between">
-                      <span className="text-slate-400">Entry Price:</span>
-                      <span className="text-white">${typeof trade.entry_price === 'number' ? trade.entry_price.toFixed(2) : parseFloat(trade.entry_price).toFixed(2)}</span>
-                    </div>
-                    {trade.exit_price && (
-                      <div className="flex justify-between">
-                        <span className="text-slate-400">Exit Price:</span>
-                        <span className="text-white">${typeof trade.exit_price === 'number' ? trade.exit_price.toFixed(2) : parseFloat(trade.exit_price).toFixed(2)}</span>
-                      </div>
-                    )}
-                    <div className="flex justify-between">
-                      <span className="text-slate-400">Quantity:</span>
-                      <span className="text-white font-semibold">{typeof trade.qty === 'number' ? trade.qty.toFixed(0) : parseFloat(trade.qty).toFixed(0)}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-slate-400">Entry Time:</span>
-                      <span className="text-white text-xs">
-                        {new Date(trade.entry_time).toLocaleDateString('en-US', {
-                          month: 'short',
-                          day: 'numeric',
-                          hour: '2-digit',
-                          minute: '2-digit',
-                        })}
-                      </span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-slate-400">Duration:</span>
-                      <span className="text-white flex items-center gap-1">
-                        <Clock className="w-3 h-3" />
-                        {formatDuration(trade.duration_ms)}
-                      </span>
-                    </div>
-                  </div>
-
-                  <div className={`p-3 rounded bg-slate-600/30 border mb-2 ${isPositive ? 'border-green-700/30' : 'border-red-700/30'}`}>
-                    <div className="flex justify-between">
-                      <span className="text-slate-300">P&L:</span>
-                      <span className={`font-semibold flex items-center gap-1 ${isPositive ? 'text-green-400' : 'text-red-400'}`}>
-                        {isPositive ? <TrendingUp className="w-4 h-4" /> : <TrendingDown className="w-4 h-4" />}
-                        {isPositive ? '+' : ''}${Math.abs(pnl).toFixed(2)} ({isPositive ? '+' : ''}
-                        {pnlPercent.toFixed(2)}%)
-                      </span>
-                    </div>
-                  </div>
-
-                  <div className="flex justify-end">
-                    <span className={`px-2 py-1 rounded text-xs font-semibold ${
-                      trade.status === 'closed'
-                        ? 'bg-slate-700 text-slate-300'
-                        : 'bg-blue-900/30 text-blue-400'
-                    }`}>
-                      {trade.status.charAt(0).toUpperCase() + trade.status.slice(1)}
-                    </span>
-                  </div>
+                <div className={`flex items-center justify-end gap-1 font-semibold ${getPnLColor(pnl)}`}>
+                  {pnl >= 0 ? <TrendingUp className="w-4 h-4" /> : <TrendingDown className="w-4 h-4" />}
+                  {pnl >= 0 ? '+' : ''}{formatCurrency(Math.abs(pnl))}
                 </div>
               );
-            })}
-          </div>
-        </div>
-      ) : (
-        <div className="bg-slate-800 rounded-lg p-12 border border-slate-700 text-center">
-          <p className="text-slate-400">No trades found</p>
-        </div>
-      )}
+            },
+          },
+          {
+            key: 'realized_plpc',
+            label: 'Return %',
+            align: 'right',
+            render: (val, trade) => {
+              const position = positionMap.get(trade.symbol);
+              const pnlPercent = trade.status === 'open' ? ((position?.unrealized_plpc || 0) * 100) : ((val || 0) * 100);
+              return (
+                <span className={`font-semibold ${getPnLColor(pnlPercent)}`}>
+                  {pnlPercent >= 0 ? '+' : ''}{pnlPercent.toFixed(2)}%
+                </span>
+              );
+            },
+          },
+          {
+            key: 'status',
+            label: 'Status',
+            align: 'center',
+            render: (val) => (
+              <span className={`px-3 py-1 rounded text-xs font-semibold ${
+                val === 'closed' ? 'bg-slate-700 text-slate-300' : 'bg-blue-900/30 text-blue-400'
+              }`}>
+                {val.charAt(0).toUpperCase() + val.slice(1)}
+              </span>
+            ),
+          },
+        ]}
+        renderMobileCard={(trade) => {
+          const position = positionMap.get(trade.symbol);
+          const pnl = trade.status === 'open' ? (position?.unrealized_pl || 0) : (trade.realized_pl || 0);
+          const pnlPercent = trade.status === 'open' ? ((position?.unrealized_plpc || 0) * 100) : ((trade.realized_plpc || 0) * 100);
+          return (
+            <>
+              <div className="space-y-2 text-sm mb-3">
+                <div className="flex justify-between"><span className="text-slate-400">Entry:</span><span className="text-white">{formatCurrency(typeof trade.entry_price === 'number' ? trade.entry_price : parseFloat(trade.entry_price))}</span></div>
+                {trade.exit_price && <div className="flex justify-between"><span className="text-slate-400">Exit:</span><span className="text-white">{formatCurrency(typeof trade.exit_price === 'number' ? trade.exit_price : parseFloat(trade.exit_price))}</span></div>}
+                <div className="flex justify-between"><span className="text-slate-400">Qty:</span><span className="text-white font-semibold">{(typeof trade.qty === 'number' ? trade.qty : parseFloat(trade.qty)).toFixed(0)}</span></div>
+                <div className="flex justify-between"><span className="text-slate-400">Entry Time:</span><span className="text-white text-xs">{new Date(trade.entry_time).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</span></div>
+                <div className="flex justify-between"><span className="text-slate-400">Duration:</span><span className="text-white flex items-center gap-1"><Clock className="w-3 h-3" />{formatDuration((trade.duration_ms || 0) / 1000)}</span></div>
+              </div>
+              <div className={`p-3 rounded bg-slate-600/30 border mb-2 ${pnl >= 0 ? 'border-green-700/30' : 'border-red-700/30'}`}>
+                <div className="flex justify-between"><span className="text-slate-300">P&L:</span><span className={`font-semibold flex items-center gap-1 ${getPnLColor(pnl)}`}>{pnl >= 0 ? <TrendingUp className="w-4 h-4" /> : <TrendingDown className="w-4 h-4" />}{pnl >= 0 ? '+' : ''}{formatCurrency(Math.abs(pnl))} ({pnl >= 0 ? '+' : ''}{pnlPercent.toFixed(2)}%)</span></div>
+              </div>
+              <div className="flex justify-end"><span className={`px-2 py-1 rounded text-xs font-semibold ${trade.status === 'closed' ? 'bg-slate-700 text-slate-300' : 'bg-blue-900/30 text-blue-400'}`}>{trade.status.charAt(0).toUpperCase() + trade.status.slice(1)}</span></div>
+            </>
+          );
+        }}
+        emptyMessage="No trades found"
+      />
 
       {/* Summary */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">

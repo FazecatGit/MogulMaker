@@ -136,6 +136,16 @@ type ScoutSkipList struct {
 	RecheckAfter time.Time      `json:"recheck_after"`
 }
 
+type Setting struct {
+	ID           int32          `json:"id"`
+	SettingKey   string         `json:"setting_key"`
+	SettingValue string         `json:"setting_value"`
+	SettingType  sql.NullString `json:"setting_type"`
+	IsEncrypted  sql.NullBool   `json:"is_encrypted"`
+	CreatedAt    sql.NullTime   `json:"created_at"`
+	UpdatedAt    sql.NullTime   `json:"updated_at"`
+}
+
 type Signal struct {
 	ID           int32          `json:"id"`
 	Symbol       string         `json:"symbol"`

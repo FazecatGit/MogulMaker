@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import { AlertCircle, TrendingUp, RefreshCw, Target, Zap, Star, Plus, X, Play } from 'lucide-react';
 import { useScout } from '@/hooks/useScout';
 import PageHeader from '@/components/PageHeader';
+import ResponsiveTable from '@/components/Tables/ResponsiveTable';
 import apiClient from '@/lib/apiClient';
 
 export default function ScouterPage() {
@@ -344,185 +345,63 @@ export default function ScouterPage() {
 
       {/* Opportunities List */}
       {opportunities.length > 0 ? (
-        <div className="bg-slate-800 rounded-lg border border-slate-700 overflow-hidden">
-          {/* Desktop View - Table */}
-          <div className="hidden md:block overflow-x-auto">
-            <table className="w-full">
-              <thead className="bg-slate-700/50 border-b border-slate-700">
-                <tr>
-                  <th className="px-6 py-3 text-center text-sm font-semibold text-slate-300">
-                    Rank
-                  </th>
-                  <th className="px-6 py-3 text-left text-sm font-semibold text-slate-300">
-                    Symbol
-                  </th>
-                  <th className="px-6 py-3 text-right text-sm font-semibold text-slate-300">
-                    Score
-                  </th>
-                  <th className="px-6 py-3 text-right text-sm font-semibold text-slate-300">
-                    RSI
-                  </th>
-                  <th className="px-6 py-3 text-right text-sm font-semibold text-slate-300">
-                    ATR
-                  </th>
-                  <th className="px-6 py-3 text-left text-sm font-semibold text-slate-300">
-                    Analysis
-                  </th>
-                  <th className="px-6 py-3 text-center text-sm font-semibold text-slate-300">
-                    Action
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-700">
-                {opportunities.map((opp) => (
-                  <>
-                    <tr key={opp.symbol}
-                      className="hover:bg-slate-700/30 transition cursor-pointer"
-                      onClick={() => setExpandedSymbol(expandedSymbol === opp.symbol ? null : opp.symbol)}
-                    >
-                      <td className="px-6 py-4 text-center">
-                        <div className="flex items-center justify-center gap-1">
-                          <Star className="w-4 h-4 text-yellow-400 fill-yellow-400" />
-                          <span className="text-white font-semibold">{opp.rank}</span>
-                        </div>
-                      </td>
-                      <td className="px-6 py-4">
-                        <div className="font-semibold text-white text-lg">{opp.symbol}</div>
-                      </td>
-                      <td className="px-6 py-4 text-right">
-                        <span className={`inline-block px-3 py-1 rounded-lg font-bold text-sm ${getScoreBadgeColor(opp.score)}`}>
-                          {opp.score.toFixed(1)}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 text-right text-slate-300">
-                        {opp.rsi ? opp.rsi.toFixed(2) : '-'}
-                      </td>
-                      <td className="px-6 py-4 text-right text-slate-300">
-                        {opp.atr ? opp.atr.toFixed(4) : '-'}
-                      </td>
-                      <td className="px-6 py-4 text-slate-300 text-sm truncate">
-                        {opp.analysis}
-                      </td>
-                      <td className="px-6 py-4 text-center">
-                        <button 
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleAddToWatchlist(opp.symbol);
-                          }}
-                          className={`px-3 py-1 rounded text-sm font-semibold transition ${
-                            addedToWatchlist.has(opp.symbol)
-                              ? 'bg-green-600 text-white'
-                              : 'bg-blue-600 hover:bg-blue-700 text-white'
-                          }`}
-                        >
-                          {addedToWatchlist.has(opp.symbol) ? '✓ Added' : '+ Watchlist'}
-                        </button>
-                      </td>
-                    </tr>
-                    
-                    {/* Expanded Details */}
-                    {expandedSymbol === opp.symbol && (
-                      <tr className="bg-slate-700/20">
-                        <td colSpan={7} className="px-6 py-6">
-                          <div className="space-y-4">
-                            <div>
-                              <h4 className="text-sm font-semibold text-slate-300 mb-2">Analysis</h4>
-                              <p className="text-white text-sm leading-relaxed">{opp.analysis}</p>
-                            </div>
-                            
-                            <div className="grid grid-cols-3 gap-4">
-                              <div className="bg-slate-800/50 rounded p-3 border border-slate-700">
-                                <p className="text-xs text-slate-400 mb-1">Score</p>
-                                <p className={`text-lg font-bold ${
-                                  opp.score >= 8 ? 'text-green-400' : 
-                                  opp.score >= 6 ? 'text-yellow-400' : 
-                                  'text-red-400'
-                                }`}>
-                                  {opp.score.toFixed(1)}
-                                </p>
-                              </div>
-                              
-                              <div className="bg-slate-800/50 rounded p-3 border border-slate-700">
-                                <p className="text-xs text-slate-400 mb-1">RSI</p>
-                                <p className="text-lg font-bold text-blue-400">
-                                  {opp.rsi ? opp.rsi.toFixed(2) : 'N/A'}
-                                </p>
-                                <p className="text-xs text-slate-500 mt-1">
-                                  {opp.rsi && opp.rsi < 35 ? '🔴 Oversold' : opp.rsi && opp.rsi > 75 ? '🟢 Overbought' : '⚪ Neutral'}
-                                </p>
-                              </div>
-                              
-                              <div className="bg-slate-800/50 rounded p-3 border border-slate-700">
-                                <p className="text-xs text-slate-400 mb-1">ATR</p>
-                                <p className="text-lg font-bold text-purple-400">
-                                  {opp.atr ? opp.atr.toFixed(4) : 'N/A'}
-                                </p>
-                                <p className="text-xs text-slate-500 mt-1">Volatility</p>
-                              </div>
-                            </div>
-                          </div>
-                        </td>
-                      </tr>
-                    )}
-                  </>
-                ))}
-              </tbody>
-            </table>
-          </div>
-
-          {/* Mobile View - Cards */}
-          <div className="md:hidden space-y-3 p-4">
-            {opportunities.map((opp) => (
-              <div
-                key={opp.symbol}
-                className="bg-slate-700/50 rounded-lg p-4 border border-slate-600 cursor-pointer hover:border-blue-500 transition"
-                onClick={() => setSelectedSymbol(selectedSymbol === opp.symbol ? null : opp.symbol)}
-              >
-                <div className="flex justify-between items-start mb-3">
-                  <div>
-                    <div className="flex items-center gap-2 mb-1">
-                      <Star className="w-4 h-4 text-yellow-400 fill-yellow-400" />
-                      <span className="text-white font-bold">#{opp.rank}</span>
-                    </div>
-                    <div className="font-semibold text-white text-lg">{opp.symbol}</div>
-                  </div>
-                  <span className={`px-3 py-1 rounded-lg text-sm font-bold ${getScoreBadgeColor(opp.score)}`}>
-                    {opp.score.toFixed(1)}
-                  </span>
+        <ResponsiveTable
+          data={opportunities}
+          keyExtractor={(opp) => opp.symbol}
+          columns={[
+            {
+              key: 'rank',
+              label: 'Rank',
+              align: 'center',
+              width: '80px',
+              render: (val) => (
+                <div className="flex items-center justify-center gap-1">
+                  <Star className="w-4 h-4 text-yellow-400 fill-yellow-400" />
+                  <span className="text-white font-semibold">{val}</span>
                 </div>
-
-                <div className="space-y-2 text-sm mb-3 border-t border-slate-600 pt-3">
-                  <div className="flex justify-between">
-                    <span className="text-slate-400">RSI:</span>
-                    <span className="text-white font-semibold">{opp.rsi ? opp.rsi.toFixed(2) : '-'}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-slate-400">ATR:</span>
-                    <span className="text-white font-semibold">{opp.atr ? opp.atr.toFixed(4) : '-'}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-slate-400">Analysis:</span>
-                    <span className="text-white text-xs text-right truncate ml-2">{opp.analysis}</span>
-                  </div>
-                </div>
-
-                <button 
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleAddToWatchlist(opp.symbol);
-                  }}
-                  className={`w-full px-3 py-2 rounded text-sm font-semibold transition ${
-                    addedToWatchlist.has(opp.symbol)
-                      ? 'bg-green-600 text-white'
-                      : 'bg-blue-600 hover:bg-blue-700 text-white'
-                  }`}
-                >
-                  {addedToWatchlist.has(opp.symbol) ? '✓ Added to Watchlist' : '+ Add to Watchlist'}
-                </button>
+              ),
+            },
+            { key: 'symbol', label: 'Symbol', render: (val) => <div className="font-semibold text-white text-lg">{val}</div> },
+            {
+              key: 'score',
+              label: 'Score',
+              align: 'right',
+              render: (val) => (
+                <span className={`inline-block px-3 py-1 rounded-lg font-bold text-sm ${getScoreBadgeColor(val)}`}>
+                  {val.toFixed(1)}
+                </span>
+              ),
+            },
+            { key: 'rsi', label: 'RSI', align: 'right', render: (val) => val ? val.toFixed(2) : '-' },
+            { key: 'atr', label: 'ATR', align: 'right', render: (val) => val ? val.toFixed(4) : '-' },
+            { key: 'analysis', label: 'Analysis', render: (val) => <span className="text-slate-300 text-sm truncate">{val}</span> },
+          ]}
+          renderActions={(opp) => (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                handleAddToWatchlist(opp.symbol);
+              }}
+              className={`px-3 py-1 rounded text-sm font-semibold transition ${
+                addedToWatchlist.has(opp.symbol)
+                  ? 'bg-green-600 text-white'
+                  : 'bg-blue-600 hover:bg-blue-700 text-white'
+              }`}
+            >
+              {addedToWatchlist.has(opp.symbol) ? '✓ Added' : '+ Watchlist'}
+            </button>
+          )}
+          renderMobileCard={(opp) => (
+            <>
+              <div className="space-y-2 text-sm mb-3 border-t border-slate-600 pt-3">
+                <div className="flex justify-between"><span className="text-slate-400">RSI:</span><span className="text-white font-semibold">{opp.rsi ? opp.rsi.toFixed(2) : '-'}</span></div>
+                <div className="flex justify-between"><span className="text-slate-400">ATR:</span><span className="text-white font-semibold">{opp.atr ? opp.atr.toFixed(4) : '-'}</span></div>
+                <div className="flex justify-between"><span className="text-slate-400">Analysis:</span><span className="text-white text-xs text-right truncate ml-2">{opp.analysis}</span></div>
               </div>
-            ))}
-          </div>
-        </div>
+            </>
+          )}
+          emptyMessage="No opportunities found"
+        />
       ) : (
         <div className="bg-slate-800 rounded-lg p-12 border border-slate-700 text-center">
           <AlertCircle className="w-12 h-12 text-slate-400 mx-auto mb-4" />

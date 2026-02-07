@@ -3,6 +3,8 @@
 import React, { useState, useEffect } from 'react';
 import { Star, Plus, X, RefreshCw, Trash2, Eye } from 'lucide-react';
 import PageHeader from '@/components/PageHeader';
+import ResponsiveTable from '@/components/Tables/ResponsiveTable';
+import { formatDate, safeValue } from '@/lib/formatters';
 import apiClient from '@/lib/apiClient';
 
 interface WatchlistItem {
@@ -417,263 +419,134 @@ export default function WatchlistPage() {
 
       {/* Watchlist Table */}
       {!isLoading && getSortedSymbols().length > 0 && (
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead>
-              <tr className="border-b border-slate-700">
-                <th className="px-4 py-3 text-left text-slate-300 font-semibold">Symbol</th>
-                <th className="px-4 py-3 text-center text-slate-300 font-semibold">Score</th>
-                <th className="px-4 py-3 text-left text-slate-300 font-semibold">Reason</th>
-                <th className="px-4 py-3 text-center text-slate-300 font-semibold">Added</th>
-                <th className="px-4 py-3 text-center text-slate-300 font-semibold">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {getSortedSymbols().map((item) => (
-                <React.Fragment key={item.symbol}>
-                  <tr
-                    onClick={() => analyzeSymbol(item.symbol)}
-                    className="border-b border-slate-700 hover:bg-slate-700/50 transition cursor-pointer"
-                  >
-                    {/* Symbol */}
-                    <td className="px-4 py-4">
-                      <span className="font-bold text-blue-400">{item.symbol}</span>
-                    </td>
+        <ResponsiveTable
+          data={getSortedSymbols()}
+          keyExtractor={(item) => item.symbol}
+          columns={[
+            { key: 'symbol', label: 'Symbol', render: (val) => <span className="font-bold text-blue-400">{val}</span> },
+            {
+              key: 'score',
+              label: 'Score',
+              align: 'center',
+              render: (val) => (
+                <span className={`inline-block px-3 py-1 rounded-lg font-bold text-sm border ${getScoreBadgeColor(val)}`}>
+                  {val.toFixed(1)}
+                </span>
+              ),
+            },
+            {
+              key: 'reason',
+              label: 'Reason',
+              render: (val) => <p className="text-sm text-slate-400">{safeValue(val) || 'No reason provided'}</p>,
+            },
+            {
+              key: 'added_date',
+              label: 'Added',
+              align: 'center',
+              render: (val) => <p className="text-sm text-slate-400">{formatDate(safeValue(val))}</p>,
+              mobileHidden: true,
+            },
+          ]}
+          renderActions={(item) => (
+            <div className="flex items-center justify-center gap-2">
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  analyzeSymbol(item.symbol);
+                }}
+                title={expandedSymbol === item.symbol ? 'Hide details' : 'View details'}
+                className={`transition ${
+                  expandedSymbol === item.symbol ? 'text-blue-300' : 'text-blue-400 hover:text-blue-300'
+                }`}
+              >
+                <Eye className="w-4 h-4" />
+              </button>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  removeFromWatchlist(item.symbol);
+                }}
+                title="Remove from watchlist"
+                className="text-red-400 hover:text-red-300 transition"
+              >
+                <Trash2 className="w-4 h-4" />
+              </button>
+            </div>
+          )}
+          renderMobileCard={(item) => (
+            <div className="space-y-2 text-sm">
+              <div className="flex justify-between"><span className="text-slate-400">Score:</span><span className={`font-bold px-2 py-1 rounded ${getScoreBadgeColor(item.score)}`}>{item.score.toFixed(1)}</span></div>
+              <div className="flex justify-between"><span className="text-slate-400">Reason:</span><span className="text-white text-xs text-right ml-2">{safeValue(item.reason) || 'N/A'}</span></div>
+            </div>
+          )}
+          emptyMessage="No symbols in watchlist"
+        />
+      )}
 
-                    {/* Score */}
-                    <td className="px-4 py-4 text-center">
-                      <span className={`inline-block px-3 py-1 rounded-lg font-bold text-sm border ${getScoreBadgeColor(item.score)}`}>
-                        {item.score.toFixed(1)}
-                      </span>
-                    </td>
-
-                    {/* Reason */}
-                    <td className="px-4 py-4">
-                      <p className="text-sm text-slate-400">
-                        {safeValue(item.reason) || 'No reason provided'}
-                      </p>
-                    </td>
-
-                    {/* Date Added */}
-                    <td className="px-4 py-4 text-center">
-                      <p className="text-sm text-slate-400">
-                        {formatDate(safeValue(item.added_date))}
-                      </p>
-                    </td>
-
-                    {/* Actions */}
-                    <td className="px-4 py-4 text-center">
-                      <div className="flex items-center justify-center gap-2">
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            analyzeSymbol(item.symbol);
-                          }}
-                          title={expandedSymbol === item.symbol ? 'Hide details' : 'View details'}
-                          className={`transition ${
-                            expandedSymbol === item.symbol
-                              ? 'text-blue-300'
-                              : 'text-blue-400 hover:text-blue-300'
-                          }`}
-                        >
-                          <Eye className="w-4 h-4" />
-                        </button>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            removeFromWatchlist(item.symbol);
-                          }}
-                          title="Remove from watchlist"
-                          className="text-red-400 hover:text-red-300 transition"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-
-                  {/* Expanded Analysis Row */}
-                  {expandedSymbol === item.symbol && (
-                    <tr className="border-b border-slate-700 bg-slate-800/50">
-                      <td colSpan={5} className="px-4 py-4">
-                        {analysisLoading ? (
-                          <div className="flex items-center justify-center gap-2 text-slate-400">
-                            <RefreshCw className="w-4 h-4 animate-spin" />
-                            Analyzing {item.symbol}...
-                          </div>
-                        ) : analysisData && analysisData[item.symbol] ? (
-                          <div className="space-y-4">
-                            {/* Core Metrics Grid */}
-                            <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-                              {/* Current Price */}
-                              <div className="bg-slate-700 rounded p-3">
-                                <p className="text-slate-400 text-xs font-semibold mb-1">Price</p>
-                                <p className="text-white font-bold text-lg">
-                                  ${analysisData[item.symbol].current_price?.toFixed(2) || 'N/A'}
-                                </p>
-                              </div>
-
-                              {/* RSI */}
-                              <div className="bg-slate-700 rounded p-3">
-                                <p className="text-slate-400 text-xs font-semibold mb-1">RSI</p>
-                                <p className="text-white font-bold text-lg">
-                                  {analysisData[item.symbol].rsi?.toFixed(1) || 'N/A'}
-                                </p>
-                                <p className="text-xs text-slate-400 mt-1">
-                                  {analysisData[item.symbol].rsi ? (
-                                    analysisData[item.symbol].rsi! > 70
-                                      ? '🔴 Overbought'
-                                      : analysisData[item.symbol].rsi! < 30
-                                        ? '🟢 Oversold'
-                                        : '🟡 Neutral'
-                                  ) : (
-                                    'N/A'
-                                  )}
-                                </p>
-                              </div>
-
-                              {/* ATR */}
-                              <div className="bg-slate-700 rounded p-3">
-                                <p className="text-slate-400 text-xs font-semibold mb-1">ATR</p>
-                                <p className="text-white font-bold text-lg">
-                                  {analysisData[item.symbol].atr?.toFixed(2) || 'N/A'}
-                                </p>
-                              </div>
-
-                              {/* SMA 20 */}
-                              <div className="bg-slate-700 rounded p-3">
-                                <p className="text-slate-400 text-xs font-semibold mb-1">SMA 20</p>
-                                <p className="text-white font-bold text-lg">
-                                  ${analysisData[item.symbol].sma_20?.toFixed(2) || 'N/A'}
-                                </p>
-                              </div>
-
-                              {/* Trend */}
-                              <div className="bg-slate-700 rounded p-3">
-                                <p className="text-slate-400 text-xs font-semibold mb-1">Trend</p>
-                                <p className={`font-bold text-lg ${
-                                  analysisData[item.symbol].trend === 'bullish'
-                                    ? 'text-green-400'
-                                    : analysisData[item.symbol].trend === 'bearish'
-                                      ? 'text-red-400'
-                                      : 'text-yellow-400'
-                                }`}>
-                                  {analysisData[item.symbol].trend?.toUpperCase() || 'N/A'}
-                                </p>
-                              </div>
-                            </div>
-
-                            {/* Support & Resistance */}
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-slate-700/50 rounded p-3">
-                              <div>
-                                <p className="text-slate-400 text-xs font-semibold mb-2">Support Level</p>
-                                <p className="text-green-400 font-bold text-lg">
-                                  ${analysisData[item.symbol].support_level?.toFixed(2) || 'N/A'}
-                                </p>
-                                {analysisData[item.symbol].distance_to_support !== undefined && (
-                                  <p className="text-xs text-slate-400 mt-1">
-                                    {analysisData[item.symbol].distance_to_support?.toFixed(2)}% below
-                                  </p>
-                                )}
-                              </div>
-                              <div>
-                                <p className="text-slate-400 text-xs font-semibold mb-2">Resistance Level</p>
-                                <p className="text-red-400 font-bold text-lg">
-                                  ${analysisData[item.symbol].resistance_level?.toFixed(2) || 'N/A'}
-                                </p>
-                                {analysisData[item.symbol].distance_to_resistance !== undefined && (
-                                  <p className="text-xs text-slate-400 mt-1">
-                                    {analysisData[item.symbol].distance_to_resistance?.toFixed(2)}% above
-                                  </p>
-                                )}
-                              </div>
-                            </div>
-
-                            {/* Chart Pattern Analysis */}
-                            {analysisData[item.symbol].chart_pattern && (
-                              <div className="bg-slate-700/50 rounded p-3">
-                                <p className="text-slate-400 text-xs font-semibold mb-2">Chart Pattern</p>
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                                  <div>
-                                    <p className="text-white font-semibold">
-                                      {analysisData[item.symbol].chart_pattern.pattern}
-                                    </p>
-                                    <p className="text-xs text-slate-400">
-                                      Direction: <span className={
-                                        analysisData[item.symbol].chart_pattern.direction === 'LONG'
-                                          ? 'text-green-400'
-                                          : analysisData[item.symbol].chart_pattern.direction === 'SHORT'
-                                            ? 'text-red-400'
-                                            : 'text-yellow-400'
-                                      }>
-                                        {analysisData[item.symbol].chart_pattern.direction}
-                                      </span>
-                                    </p>
-                                    <p className="text-xs text-slate-400 mt-1">
-                                      Confidence: {analysisData[item.symbol].chart_pattern.confidence?.toFixed(1)}%
-                                    </p>
-                                  </div>
-                                  <div>
-                                    <p className="text-xs text-slate-400 mb-1">
-                                      Target: ${analysisData[item.symbol].chart_pattern.target_up || analysisData[item.symbol].chart_pattern.target_down || 'N/A'}
-                                    </p>
-                                    <p className="text-xs text-slate-400 mb-1">
-                                      Stop Loss: ${analysisData[item.symbol].chart_pattern.stop_loss?.toFixed(2) || 'N/A'}
-                                    </p>
-                                    <p className="text-xs text-slate-400">
-                                      Risk:Reward: {analysisData[item.symbol].chart_pattern.risk_reward?.toFixed(2) || 'N/A'}:1
-                                    </p>
-                                  </div>
-                                </div>
-                                {analysisData[item.symbol].chart_pattern.reasoning && (
-                                  <p className="text-xs text-slate-300 mt-2 italic">
-                                    {analysisData[item.symbol].chart_pattern.reasoning}
-                                  </p>
-                                )}
-                              </div>
-                            )}
-
-                            {/* Trading Recommendation */}
-                            {analysisData[item.symbol].trading_recommendation && (
-                              <div className={`rounded p-3 ${
-                                analysisData[item.symbol].trading_recommendation.action === 'BUY'
-                                  ? 'bg-green-900/30 border border-green-700'
-                                  : analysisData[item.symbol].trading_recommendation.action === 'SELL'
-                                    ? 'bg-red-900/30 border border-red-700'
-                                    : 'bg-yellow-900/30 border border-yellow-700'
-                              }`}>
-                                <div className="flex justify-between items-start mb-2">
-                                  <p className={`font-bold text-lg ${
-                                    analysisData[item.symbol].trading_recommendation.action === 'BUY'
-                                      ? 'text-green-400'
-                                      : analysisData[item.symbol].trading_recommendation.action === 'SELL'
-                                        ? 'text-red-400'
-                                        : 'text-yellow-400'
-                                  }`}>
-                                    {analysisData[item.symbol].trading_recommendation.action}
-                                  </p>
-                                  <p className="text-xs text-slate-300">
-                                    Confidence: {analysisData[item.symbol].trading_recommendation.confidence?.toFixed(1)}%
-                                  </p>
-                                </div>
-                                {analysisData[item.symbol].trading_recommendation.reasoning && (
-                                  <p className="text-xs text-slate-300">
-                                    {analysisData[item.symbol].trading_recommendation.reasoning}
-                                  </p>
-                                )}
-                              </div>
-                            )}
-                          </div>
-                        ) : (
-                          <p className="text-slate-400 text-center">Failed to load analysis</p>
-                        )}
-                      </td>
-                    </tr>
-                  )}
-                </React.Fragment>
-              ))}
-            </tbody>
-          </table>
+      {/* Expanded Analysis Section - Outside Table */}
+      {!isLoading && expandedSymbol && analysisData[expandedSymbol] && (
+        <div className="bg-slate-800 rounded-lg border border-slate-700 p-6">
+          <div className="mb-4 flex justify-between items-center">
+            <h3 className="text-xl font-bold text-white">{expandedSymbol} Analysis</h3>
+            <button
+              onClick={() => setExpandedSymbol(null)}
+              className="text-sm text-blue-400 hover:text-blue-300"
+            >
+              Hide Details ✕
+            </button>
+          </div>
+          
+          {analysisLoading ? (
+            <div className="flex items-center justify-center gap-2 text-slate-400 py-8">
+              <RefreshCw className="w-4 h-4 animate-spin" />
+              Analyzing {expandedSymbol}...
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {/* Core Metrics Grid */}
+              <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+                <div className="bg-slate-700 rounded p-3">
+                  <p className="text-slate-400 text-xs font-semibold mb-1">Price</p>
+                  <p className="text-white font-bold text-lg">
+                    ${analysisData[expandedSymbol].current_price?.toFixed(2) || 'N/A'}
+                  </p>
+                </div>
+                <div className="bg-slate-700 rounded p-3">
+                  <p className="text-slate-400 text-xs font-semibold mb-1">RSI</p>
+                  <p className="text-white font-bold text-lg">
+                    {analysisData[expandedSymbol].rsi?.toFixed(1) || 'N/A'}
+                  </p>
+                  <p className="text-xs text-slate-400 mt-1">
+                    {analysisData[expandedSymbol].rsi ? (
+                      analysisData[expandedSymbol].rsi! > 70 ? '🔴 Overbought' :
+                      analysisData[expandedSymbol].rsi! < 30 ? '🟢 Oversold' : '🟡 Neutral'
+                    ) : 'N/A'}
+                  </p>
+                </div>
+                <div className="bg-slate-700 rounded p-3">
+                  <p className="text-slate-400 text-xs font-semibold mb-1">ATR</p>
+                  <p className="text-white font-bold text-lg">
+                    {analysisData[expandedSymbol].atr?.toFixed(2) || 'N/A'}
+                  </p>
+                </div>
+                <div className="bg-slate-700 rounded p-3">
+                  <p className="text-slate-400 text-xs font-semibold mb-1">SMA 20</p>
+                  <p className="text-white font-bold text-lg">
+                    ${analysisData[expandedSymbol].sma_20?.toFixed(2) || 'N/A'}
+                  </p>
+                </div>
+                <div className="bg-slate-700 rounded p-3">
+                  <p className="text-slate-400 text-xs font-semibold mb-1">Trend</p>
+                  <p className={`font-bold text-lg ${
+                    analysisData[expandedSymbol].trend === 'bullish' ? 'text-green-400' :
+                    analysisData[expandedSymbol].trend === 'bearish' ? 'text-red-400' : 'text-yellow-400'
+                  }`}>
+                    {analysisData[expandedSymbol].trend?.toUpperCase() || 'N/A'}
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       )}
 

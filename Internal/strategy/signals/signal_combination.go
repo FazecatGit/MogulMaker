@@ -270,7 +270,6 @@ func CalculateSignal(
 		})
 	}
 
-	// Calculate weighted ensemble score using centralized weights
 	ensembleScore := (rsiScore * DefaultSignalWeights["RSI"]) +
 		(atrScore * DefaultSignalWeights["ATR"]) +
 		(whaleScore * DefaultSignalWeights["Whale"]) +
@@ -278,10 +277,8 @@ func CalculateSignal(
 		(srScore * DefaultSignalWeights["Support/Resistance"]) +
 		(divergenceScore * DefaultSignalWeights["Divergence"])
 
-	// Map to recommendation using centralized function
 	recommendation, reasoning := MapScoreToRecommendation(ensembleScore)
 
-	// Calculate confidence based on recommendation tier
 	confidence := 50.0 // Default for WAIT
 	absScore := ensembleScore
 	if absScore < 0 {
@@ -289,25 +286,20 @@ func CalculateSignal(
 	}
 
 	if recommendation == RecommendationBuy {
-		// BUY: ensembleScore >= 1.5 → 85-100% confidence
 		confidence = 85.0 + ((ensembleScore - BuyThreshold) / BuyThreshold * 15.0)
 		if confidence > 100 {
 			confidence = 100
 		}
 	} else if recommendation == RecommendationAccumulate {
-		// ACCUMULATE: 0.5-1.5 → 70-85% confidence
 		confidence = 70.0 + ((ensembleScore - AccumulateThreshold) / 1.0 * 15.0)
 	} else if recommendation == RecommendationSell {
-		// SELL: <= -1.5 → 85-100% confidence
 		confidence = 85.0 + ((absScore + SellThreshold) / (-SellThreshold) * 15.0)
 		if confidence > 100 {
 			confidence = 100
 		}
 	} else if recommendation == RecommendationDistribute {
-		// DISTRIBUTE: -0.5 to -1.5 → 70-85% confidence
 		confidence = 70.0 + ((absScore + DistributeThreshold) / 1.0 * 15.0)
 	} else {
-		// WAIT: -0.5 to 0.5 → confidence proportional to how close to thresholds
 		confidence = 50.0 + (absScore / (-DistributeThreshold) * 20.0)
 	}
 
@@ -321,7 +313,6 @@ func CalculateSignal(
 	}
 }
 
-// ConvertToTradeSignal converts a CombinedSignal to a TradeSignal for filtering
 func ConvertToTradeSignal(combined CombinedSignal) *types.TradeSignal {
 	// Map recommendation to direction
 	direction := RecommendationWait
@@ -338,8 +329,6 @@ func ConvertToTradeSignal(combined CombinedSignal) *types.TradeSignal {
 	}
 }
 
-// analyzes alignment across timeframes
-// Reduces false signals by requiring confirmation across timeframes
 func CombineMultiTimeframeSignals(daily, fourHour, oneHour CombinedSignal) MultiTimeframeSignal {
 	result := MultiTimeframeSignal{
 		DailySignal:      daily,
@@ -349,7 +338,6 @@ func CombineMultiTimeframeSignals(daily, fourHour, oneHour CombinedSignal) Multi
 		AlignmentPercent: 0.0,
 	}
 
-	// Extract signal directions
 	dailyBullish := daily.Recommendation == RecommendationBuy || daily.Recommendation == RecommendationAccumulate
 	dailyBearish := daily.Recommendation == RecommendationSell || daily.Recommendation == RecommendationDistribute
 
@@ -359,7 +347,6 @@ func CombineMultiTimeframeSignals(daily, fourHour, oneHour CombinedSignal) Multi
 	oneHourBullish := oneHour.Recommendation == RecommendationBuy || oneHour.Recommendation == RecommendationAccumulate
 	oneHourBearish := oneHour.Recommendation == RecommendationSell || oneHour.Recommendation == RecommendationDistribute
 
-	// Count alignments
 	alignedCount := 0
 	totalTimeframes := 3
 
@@ -437,4 +424,65 @@ Multi-Timeframe Analysis:
 		alignmentText, signal.AlignmentPercent, signal.CompositeScore, signal.Confidence,
 		signal.RecommendedTrade,
 	)
+}
+
+func CalculateTradingRecommendation(price, rsi, support, resistance float64, trend string, pattern *detection.PatternSignal) map[string]interface{} {
+	recommendation := "HOLD"
+	confidence := 50.0
+	reasoning := ""
+
+	if rsi < 30 {
+		recommendation = "BUY"
+		confidence = 65.0
+		reasoning = "RSI is oversold"
+
+		if price < support*1.01 {
+			confidence = 80.0
+			reasoning += " and price is at support level"
+		}
+	} else if rsi > 70 {
+		recommendation = "SELL"
+		confidence = 65.0
+		reasoning = "RSI is overbought"
+
+		if price > resistance*0.99 {
+			confidence = 80.0
+			reasoning += " and price is at resistance level"
+		}
+	} else {
+		// Check trend
+		if trend == "bullish" {
+			recommendation = "BUY"
+			confidence = 60.0
+			reasoning = "Bullish trend with RSI in neutral zone"
+		} else if trend == "bearish" {
+			recommendation = "SELL"
+			confidence = 60.0
+			reasoning = "Bearish trend with RSI in neutral zone"
+		}
+	}
+
+	// Adjust based on pattern if available
+	if pattern != nil && pattern.Detected {
+		if pattern.Direction == "LONG" && (recommendation == "BUY" || recommendation == "HOLD") {
+			confidence += (pattern.Confidence / 100.0) * 20
+			reasoning += fmt.Sprintf(" - %s pattern supports upside", pattern.Pattern)
+			recommendation = "BUY"
+		} else if pattern.Direction == "SHORT" && (recommendation == "SELL" || recommendation == "HOLD") {
+			confidence += (pattern.Confidence / 100.0) * 20
+			reasoning += fmt.Sprintf(" - %s pattern suggests downside", pattern.Pattern)
+			recommendation = "SELL"
+		}
+	}
+
+	// Cap confidence at 100
+	if confidence > 100 {
+		confidence = 100
+	}
+
+	return map[string]interface{}{
+		"action":     recommendation,
+		"confidence": confidence,
+		"reasoning":  reasoning,
+	}
 }

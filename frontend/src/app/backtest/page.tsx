@@ -1,19 +1,16 @@
 'use client';
 
 import { useState } from 'react';
-import { Calendar, Play, RotateCcw, TrendingUp, BarChart3, AlertCircle } from 'lucide-react';
+import { Calendar, Play, RotateCcw, TrendingUp, BarChart3 } from 'lucide-react';
 import PageHeader from '@/components/PageHeader';
-import {
-  LineChart,
-  Line,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  Legend,
-  ResponsiveContainer,
-} from 'recharts';
+import Button from '@/components/ui/Button';
+import StatCard from '@/components/ui/StatCard';
+import ErrorAlert from '@/components/ui/ErrorAlert';
+import PriceChart from '@/components/Charts/PriceChart';
+import ResponsiveTable from '@/components/Tables/ResponsiveTable';
 import apiClient from '@/lib/apiClient';
+import { formatCurrency, formatPercent, formatNumber } from '@/lib/formatters';
+import { getPnLColor, getStatCardVariant } from '@/lib/colorHelpers';
 
 interface Trade {
   trade_num: number;
@@ -103,14 +100,6 @@ export default function BacktestPage() {
     setError(null);
   };
 
-  const formatPercent = (value: number) => {
-    return `${(value * 100).toFixed(2)}%`;
-  };
-
-  const formatCurrency = (value: number) => {
-    return `$${value.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',')}`
-  };
-
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -173,28 +162,25 @@ export default function BacktestPage() {
 
             {/* Error Message */}
             {error && (
-              <div className="bg-red-500/20 border border-red-500/50 rounded-lg p-3 flex gap-2 text-sm text-red-400">
-                <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
-                {error}
-              </div>
+              <ErrorAlert message={error} />
             )}
 
             {/* Action Buttons */}
             <div className="flex gap-2 pt-2">
-              <button
+              <Button
+                variant="primary"
+                icon={<Play className="w-4 h-4" />}
+                loading={isLoading}
                 onClick={handleRunBacktest}
-                disabled={isLoading}
-                className="flex-1 flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-600 text-white px-4 py-2 rounded-lg font-semibold transition"
+                className="flex-1"
               >
-                <Play className="w-4 h-4" />
                 {isLoading ? 'Running...' : 'Run Backtest'}
-              </button>
-              <button
+              </Button>
+              <Button
+                variant="secondary"
+                icon={<RotateCcw className="w-4 h-4" />}
                 onClick={handleReset}
-                className="flex items-center justify-center gap-2 bg-slate-700 hover:bg-slate-600 text-white px-4 py-2 rounded-lg font-semibold transition"
-              >
-                <RotateCcw className="w-4 h-4" />
-              </button>
+              />
             </div>
           </div>
         </div>
@@ -226,35 +212,26 @@ export default function BacktestPage() {
 
                 {/* Main Metrics */}
                 <div className="grid grid-cols-2 gap-4">
-                  <div className="bg-slate-700/50 rounded-lg p-4 border border-slate-600">
-                    <p className="text-slate-400 text-xs mb-1">Total Return</p>
-                    <p className={`text-2xl font-bold ${
-                      results.total_return_pct >= 0 ? 'text-green-400' : 'text-red-400'
-                    }`}>
-                      {results.total_return_pct.toFixed(2)}%
-                    </p>
-                  </div>
-
-                  <div className="bg-slate-700/50 rounded-lg p-4 border border-slate-600">
-                    <p className="text-slate-400 text-xs mb-1">Win Rate</p>
-                    <p className="text-2xl font-bold text-blue-400">
-                      {results.win_rate.toFixed(2)}%
-                    </p>
-                  </div>
-
-                  <div className="bg-slate-700/50 rounded-lg p-4 border border-slate-600">
-                    <p className="text-slate-400 text-xs mb-1">Largest Win</p>
-                    <p className="text-2xl font-bold text-green-400">
-                      {formatCurrency(results.largest_win)}
-                    </p>
-                  </div>
-
-                  <div className="bg-slate-700/50 rounded-lg p-4 border border-slate-600">
-                    <p className="text-slate-400 text-xs mb-1">Largest Loss</p>
-                    <p className="text-2xl font-bold text-red-400">
-                      {formatCurrency(Math.abs(results.largest_loss))}
-                    </p>
-                  </div>
+                  <StatCard
+                    label="Total Return"
+                    value={`${results.total_return_pct.toFixed(2)}%`}
+                    variant={getStatCardVariant(results.total_return_pct)}
+                  />
+                  <StatCard
+                    label="Win Rate"
+                    value={`${results.win_rate.toFixed(2)}%`}
+                    variant="neutral"
+                  />
+                  <StatCard
+                    label="Largest Win"
+                    value={formatCurrency(results.largest_win)}
+                    variant="positive"
+                  />
+                  <StatCard
+                    label="Largest Loss"
+                    value={formatCurrency(Math.abs(results.largest_loss))}
+                    variant="negative"
+                  />
                 </div>
               </div>
 
@@ -292,168 +269,109 @@ export default function BacktestPage() {
 
               {/* Historical Bars Chart */}
               {results.historical_bars && results.historical_bars.length > 0 && (
-                <div className="bg-slate-800 rounded-lg border border-slate-700 p-6">
-                  <h3 className="text-lg font-semibold text-white mb-4">Price Movement</h3>
-                  <div className="w-full h-96">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <LineChart
-                        data={results.historical_bars}
-                        margin={{ top: 5, right: 30, left: 0, bottom: 5 }}
-                      >
-                        <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
-                        <XAxis 
-                          dataKey="date" 
-                          stroke="#64748b"
-                          tick={{ fontSize: 12 }}
-                          interval={Math.floor(results.historical_bars.length / 10)}
-                        />
-                        <YAxis 
-                          stroke="#64748b"
-                          tick={{ fontSize: 12 }}
-                          domain={['dataMin - 5', 'dataMax + 5']}
-                          label={{ value: 'Price ($)', angle: -90, position: 'insideLeft' }}
-                        />
-                        <Tooltip 
-                          contentStyle={{
-                            backgroundColor: '#1e293b',
-                            border: '1px solid #475569',
-                            borderRadius: '6px',
-                          }}
-                          labelStyle={{ color: '#e2e8f0' }}
-                          formatter={(value: any, name: string | undefined) => {
-                            if (!name) return [value, name];
-                            if (['open', 'high', 'low', 'close'].includes(name)) {
-                              return [`$${value.toFixed(2)}`, name.toUpperCase()];
-                            }
-                            if (name === 'volume') {
-                              return [`${(value / 1000000).toFixed(1)}M`, 'Volume'];
-                            }
-                            return [value, name];
-                          }}
-                          cursor={{ stroke: '#64748b', strokeDasharray: '5 5' }}
-                        />
-                        <Legend 
-                          wrapperStyle={{ paddingTop: '20px' }}
-                          iconType="line"
-                        />
-                        <Line 
-                          type="monotone" 
-                          dataKey="close" 
-                          stroke="#22c55e" 
-                          dot={false}
-                          strokeWidth={2}
-                          name="Close"
-                          isAnimationActive={false}
-                        />
-                        <Line 
-                          type="monotone" 
-                          dataKey="high" 
-                          stroke="#6b7280" 
-                          dot={false}
-                          strokeWidth={1}
-                          name="High"
-                          strokeDasharray="5 5"
-                          isAnimationActive={false}
-                        />
-                        <Line 
-                          type="monotone" 
-                          dataKey="low" 
-                          stroke="#6b7280" 
-                          dot={false}
-                          strokeWidth={1}
-                          name="Low"
-                          strokeDasharray="5 5"
-                          isAnimationActive={false}
-                        />
-                      </LineChart>
-                    </ResponsiveContainer>
-                  </div>
+                <>
+                  <PriceChart
+                    data={results.historical_bars}
+                    title="Price Movement"
+                    daysLabel={`${results.historical_bars.length} days`}
+                    height={400}
+                  />
 
                   {/* Price Statistics */}
-                  <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mt-6 text-sm">
-                    <div className="bg-slate-700/30 rounded p-3">
-                      <p className="text-slate-400 text-xs mb-1">Highest</p>
-                      <p className="font-bold text-green-400 text-lg">
-                        ${Math.max(...results.historical_bars.map(b => b.high)).toFixed(2)}
-                      </p>
-                    </div>
-                    <div className="bg-slate-700/30 rounded p-3">
-                      <p className="text-slate-400 text-xs mb-1">Lowest</p>
-                      <p className="font-bold text-red-400 text-lg">
-                        ${Math.min(...results.historical_bars.map(b => b.low)).toFixed(2)}
-                      </p>
-                    </div>
-                    <div className="bg-slate-700/30 rounded p-3">
-                      <p className="text-slate-400 text-xs mb-1">Avg Volume</p>
-                      <p className="font-bold text-white text-lg">
-                        {(results.historical_bars.reduce((sum, b) => sum + b.volume, 0) / results.historical_bars.length / 1000000).toFixed(1)}M
-                      </p>
-                    </div>
-                    <div className="bg-slate-700/30 rounded p-3">
-                      <p className="text-slate-400 text-xs mb-1">Range</p>
-                      <p className="font-bold text-white text-lg">
-                        ${(Math.max(...results.historical_bars.map(b => b.high)) - Math.min(...results.historical_bars.map(b => b.low))).toFixed(2)}
-                      </p>
-                    </div>
-                    <div className="bg-slate-700/30 rounded p-3">
-                      <p className="text-slate-400 text-xs mb-1">% Change</p>
-                      <p className={`font-bold text-lg ${
-                        results.historical_bars[results.historical_bars.length - 1].close >= results.historical_bars[0].open
-                          ? 'text-green-400'
-                          : 'text-red-400'
-                      }`}>
-                        {(((results.historical_bars[results.historical_bars.length - 1].close - results.historical_bars[0].open) / results.historical_bars[0].open) * 100).toFixed(2)}%
-                      </p>
-                    </div>
+                  <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+                    <StatCard
+                      label="Highest"
+                      value={formatCurrency(Math.max(...results.historical_bars.map(b => b.high)))}
+                      variant="positive"
+                    />
+                    <StatCard
+                      label="Lowest"
+                      value={formatCurrency(Math.min(...results.historical_bars.map(b => b.low)))}
+                      variant="negative"
+                    />
+                    <StatCard
+                      label="Avg Volume"
+                      value={formatNumber(results.historical_bars.reduce((sum, b) => sum + b.volume, 0) / results.historical_bars.length / 1000000, 1) + 'M'}
+                    />
+                    <StatCard
+                      label="Range"
+                      value={formatCurrency(Math.max(...results.historical_bars.map(b => b.high)) - Math.min(...results.historical_bars.map(b => b.low)))}
+                    />
+                    <StatCard
+                      label="% Change"
+                      value={formatPercent((results.historical_bars[results.historical_bars.length - 1].close - results.historical_bars[0].open) / results.historical_bars[0].open)}
+                      variant={getStatCardVariant(results.historical_bars[results.historical_bars.length - 1].close - results.historical_bars[0].open)}
+                    />
                   </div>
 
                   {/* Trades Table */}
                   {results.trades && results.trades.length > 0 && (
-                    <div className="mt-8 bg-slate-700/20 rounded-lg border border-slate-600">
-                      <div className="p-4 border-b border-slate-600">
-                        <h3 className="text-white font-semibold">Trade Details</h3>
-                      </div>
-                      <div className="overflow-x-auto">
-                        <table className="w-full text-sm">
-                          <thead>
-                            <tr className="border-b border-slate-600 text-slate-400 text-xs uppercase">
-                              <th className="px-4 py-3 text-left">#</th>
-                              <th className="px-4 py-3 text-left">Entry Date</th>
-                              <th className="px-4 py-3 text-right">Entry Price</th>
-                              <th className="px-4 py-3 text-left">Exit Date</th>
-                              <th className="px-4 py-3 text-right">Exit Price</th>
-                              <th className="px-4 py-3 text-right">Qty</th>
-                              <th className="px-4 py-3 text-right">P&L</th>
-                              <th className="px-4 py-3 text-right">Return %</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {results.trades.map((trade, idx) => (
-                              <tr key={idx} className="border-b border-slate-700 hover:bg-slate-700/20">
-                                <td className="px-4 py-3 text-white">{trade.trade_num}</td>
-                                <td className="px-4 py-3 text-slate-300">{trade.entry_time}</td>
-                                <td className="px-4 py-3 text-right text-slate-300">${trade.entry_price.toFixed(2)}</td>
-                                <td className="px-4 py-3 text-slate-300">{trade.exit_time}</td>
-                                <td className="px-4 py-3 text-right text-slate-300">${trade.exit_price.toFixed(2)}</td>
-                                <td className="px-4 py-3 text-right text-slate-400">{trade.quantity.toFixed(2)}</td>
-                                <td className={`px-4 py-3 text-right font-semibold ${
-                                  trade.pnl >= 0 ? 'text-green-400' : 'text-red-400'
-                                }`}>
-                                  ${trade.pnl.toFixed(2)}
-                                </td>
-                                <td className={`px-4 py-3 text-right font-semibold ${
-                                  trade.return_pct >= 0 ? 'text-green-400' : 'text-red-400'
-                                }`}>
-                                  {trade.return_pct.toFixed(2)}%
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
+                    <div className="mt-8">
+                      <h3 className="text-white font-semibold mb-4">Trade Details</h3>
+                      <ResponsiveTable
+                        data={results.trades}
+                        keyExtractor={(trade, idx) => idx}
+                        columns={[
+                          {
+                            key: 'trade_num' as any,
+                            label: '#',
+                            width: '50px',
+                            align: 'left',
+                          },
+                          {
+                            key: 'entry_time' as any,
+                            label: 'Entry Date',
+                            mobileHidden: true,
+                          },
+                          {
+                            key: 'entry_price' as any,
+                            label: 'Entry Price',
+                            align: 'right',
+                            render: (val) => formatCurrency(val),
+                          },
+                          {
+                            key: 'exit_time' as any,
+                            label: 'Exit Date',
+                            mobileHidden: true,
+                          },
+                          {
+                            key: 'exit_price' as any,
+                            label: 'Exit Price',
+                            align: 'right',
+                            render: (val) => formatCurrency(val),
+                          },
+                          {
+                            key: 'quantity' as any,
+                            label: 'Qty',
+                            align: 'right',
+                            render: (val) => val.toFixed(2),
+                          },
+                          {
+                            key: 'pnl' as any,
+                            label: 'P&L',
+                            align: 'right',
+                            render: (val) => (
+                              <span className={getPnLColor(val)}>
+                                {formatCurrency(val)}
+                              </span>
+                            ),
+                          },
+                          {
+                            key: 'return_pct' as any,
+                            label: 'Return %',
+                            align: 'right',
+                            render: (val) => (
+                              <span className={getPnLColor(val)}>
+                                {formatPercent(val / 100)}
+                              </span>
+                            ),
+                          },
+                        ]}
+                        emptyMessage="No trades"
+                      />
                     </div>
                   )}
-                </div>
+                </>
               )}
             </div>
           ) : (

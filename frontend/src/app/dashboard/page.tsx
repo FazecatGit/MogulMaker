@@ -6,6 +6,7 @@ import { useTrades } from '@/hooks/useTrades';
 import { usePositionsTable } from '@/hooks/usePositionsTable';
 import PageHeader from '@/components/PageHeader';
 import { Loader2, AlertCircle, TrendingUp, TrendingDown } from 'lucide-react';
+import { formatCurrency, formatPercent } from '@/lib/formatters';
 import {
   LineChart,
   Line,
@@ -175,14 +176,7 @@ export default function DashboardPage() {
               data && data.totalPnL >= 0 ? 'text-green-400' : 'text-red-400'
             }`}
           >
-            {data ? (
-              <>
-                {data.totalPnL >= 0 ? '+' : ''}
-                ${data.totalPnL.toFixed(2)}
-              </>
-            ) : (
-              'Loading...'
-            )}
+            {data ? `${data.totalPnL >= 0 ? '+' : ''}${formatCurrency(data.totalPnL)}` : 'Loading...'}
           </p>
           <p
             className={`text-sm mt-2 ${
@@ -191,7 +185,7 @@ export default function DashboardPage() {
                 : 'text-red-400'
             }`}
           >
-            {data ? `${data.dailyPnLPercent >= 0 ? '+' : ''}${data.dailyPnLPercent.toFixed(1)}%` : 'Loading...'}
+            {data ? `${data.dailyPnLPercent >= 0 ? '+' : ''}${formatPercent(data.dailyPnLPercent / 100, 1)}` : 'Loading...'}
           </p>
         </div>
 
@@ -199,7 +193,7 @@ export default function DashboardPage() {
         <div className="bg-slate-800 rounded-lg p-6 border border-slate-700">
           <p className="text-slate-400 text-sm mb-2">Portfolio Value</p>
           <p className="text-3xl font-bold text-white">
-            {data ? `$${data.portfolioValue.toFixed(2)}` : 'Loading...'}
+            {data ? formatCurrency(data.portfolioValue) : 'Loading...'}
           </p>
           <p className="text-sm text-slate-400 mt-2">
             {data ? `${data.openPositions} open positions` : 'Loading...'}
@@ -210,7 +204,7 @@ export default function DashboardPage() {
         <div className="bg-slate-800 rounded-lg p-6 border border-slate-700">
           <p className="text-slate-400 text-sm mb-2">Win Rate</p>
           <p className="text-3xl font-bold text-blue-400">
-            {statsData ? `${statsData.win_rate.toFixed(1)}%` : 'Loading...'}
+            {statsData ? formatPercent(statsData.win_rate / 100, 1) : 'Loading...'}
           </p>
           <p className="text-sm text-slate-400 mt-2">
             {statsData ? `${statsData.winning_trades}W / ${statsData.losing_trades}L` : 'Loading...'}

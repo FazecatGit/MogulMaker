@@ -10,6 +10,7 @@ import (
 	datafeed "github.com/fazecat/mogulmaker/Internal/database"
 	"github.com/fazecat/mogulmaker/Internal/handlers/monitoring"
 	"github.com/fazecat/mogulmaker/Internal/handlers/risk"
+	settingshandler "github.com/fazecat/mogulmaker/Internal/handlers/settings"
 	"github.com/fazecat/mogulmaker/Internal/strategy"
 	"github.com/fazecat/mogulmaker/Internal/strategy/position"
 	"github.com/fazecat/mogulmaker/cmd/api/internal"
@@ -27,6 +28,10 @@ func main() {
 		log.Fatalf("Failed to connect to database: %v", err)
 	}
 	defer datafeed.CloseDatabase()
+
+	// Load settings from database
+	settingshandler.LoadSettingsFromDatabase(datafeed.DB)
+
 	apiKey := os.Getenv("ALPACA_API_KEY")
 	secretKey := os.Getenv("ALPACA_API_SECRET")
 
@@ -96,6 +101,7 @@ func main() {
 		TradeMonitor:    tradeMon,
 		AlpacaClient:    alpclient,
 		JWTManager:      jwtManager,
+		DB:              datafeed.DB,
 	}
 
 	r := chi.NewRouter()
@@ -145,6 +151,10 @@ func main() {
 	r.Put("/api/watchlist/refresh-scores", apiServer.HandleRefreshWatchlistScores)
 	r.Get("/api/watchlist/analyze", apiServer.HandleAnalyzeSymbol)
 	r.Get("/api/scout", apiServer.HandleScoutStocks)
+
+	// Settings
+	r.Get("/api/settings", apiServer.HandleGetSettings)
+	r.Post("/api/settings", apiServer.HandleUpdateSettings)
 
 	// Trade Execution
 	r.Post("/api/execute-trade", apiServer.HandleExecuteTrade)

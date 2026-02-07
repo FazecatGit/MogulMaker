@@ -1,6 +1,6 @@
 'use client';
 
-import { BarChart3, LogOut } from 'lucide-react';
+import { BarChart3 } from 'lucide-react';
 import Link from 'next/link';
 
 /**
@@ -18,11 +18,6 @@ interface HeaderProps {
 }
 
 export default function Header({ userName = 'Trader' }: HeaderProps) {
-  const handleLogout = () => {
-    localStorage.removeItem('authToken');
-    window.location.href = '/login';
-  };
-
   return (
     // Header container - sticky at top, dark background
     <header className="sticky top-0 z-50 bg-gradient-to-r from-slate-900 to-slate-800 border-b border-slate-700 shadow-lg">
@@ -40,15 +35,6 @@ export default function Header({ userName = 'Trader' }: HeaderProps) {
             <p className="text-sm text-slate-400">Hello,</p>
             <p className="text-white font-semibold">{userName}</p>
           </div>
-          
-          {/* Logout Button */}
-          <button
-            onClick={handleLogout}
-            className="flex items-center gap-2 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition duration-200"
-          >
-            <LogOut className="w-4 h-4" />
-            <span className="hidden sm:inline">Logout</span>
-          </button>
         </div>
       </div>
     </header>
