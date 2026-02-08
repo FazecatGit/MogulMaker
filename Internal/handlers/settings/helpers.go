@@ -7,21 +7,32 @@ import (
 	"os"
 )
 
-// GetSetting retrieves a setting from the database with type conversion
+// GetSetting retrieves a setting from the database with type conversion and decryption
 func GetSetting(db *sql.DB, key string, defaultValue interface{}) interface{} {
 	var value string
 	var settingType string
+	var isEncrypted bool
 
 	err := db.QueryRow(
-		"SELECT setting_value, setting_type FROM settings WHERE setting_key = $1",
+		"SELECT setting_value, setting_type, is_encrypted FROM settings WHERE setting_key = $1",
 		key,
-	).Scan(&value, &settingType)
+	).Scan(&value, &settingType, &isEncrypted)
 
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return defaultValue
 		}
 		return defaultValue
+	}
+
+	// Decrypt if encrypted
+	if isEncrypted && value != "" {
+		decrypted, err := Decrypt(value)
+		if err != nil {
+			log.Printf("Error decrypting setting %s: %v", key, err)
+			return defaultValue
+		}
+		value = decrypted
 	}
 
 	// Convert to appropriate type
@@ -47,10 +58,16 @@ func GetSetting(db *sql.DB, key string, defaultValue interface{}) interface{} {
 	}
 }
 
-// SetSetting updates a setting in the database
+// SetSetting updates a setting in the database (uses UPSERT to insert or update)
 func SetSetting(db *sql.DB, key string, value interface{}) error {
 	var valueStr string
 	settingType := "string"
+	isEncrypted := false
+
+	// Determine if this is a sensitive value that should be encrypted
+	if key == "alpaca_api_key" || key == "alpaca_api_secret" || key == "finnhub_api_key" {
+		isEncrypted = true
+	}
 
 	switch v := value.(type) {
 	case bool:
@@ -72,10 +89,33 @@ func SetSetting(db *sql.DB, key string, value interface{}) error {
 		valueStr = value.(string)
 	}
 
-	_, err := db.Exec(
-		"UPDATE settings SET setting_value = $1, setting_type = $2, updated_at = CURRENT_TIMESTAMP WHERE setting_key = $3",
-		valueStr, settingType, key,
-	)
+	// Encrypt sensitive values before storing
+	if isEncrypted && valueStr != "" {
+		encrypted, err := Encrypt(valueStr)
+		if err != nil {
+			log.Printf("Error encrypting setting %s: %v", key, err)
+			return err
+		}
+		valueStr = encrypted
+		log.Printf("Encrypted setting %s for storage", key)
+	}
+
+	// Use UPSERT (INSERT ... ON CONFLICT DO UPDATE) to handle both new and existing settings
+	_, err := db.Exec(`
+		INSERT INTO settings (setting_key, setting_value, setting_type, is_encrypted, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+		ON CONFLICT (setting_key) 
+		DO UPDATE SET 
+			setting_value = EXCLUDED.setting_value,
+			setting_type = EXCLUDED.setting_type,
+			is_encrypted = EXCLUDED.is_encrypted,
+			updated_at = CURRENT_TIMESTAMP
+	`, key, valueStr, settingType, isEncrypted)
+
+	if err != nil {
+		log.Printf("Error setting %s: %v", key, err)
+	}
+
 	return err
 }
 

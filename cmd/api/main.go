@@ -35,30 +35,26 @@ func main() {
 	apiKey := os.Getenv("ALPACA_API_KEY")
 	secretKey := os.Getenv("ALPACA_API_SECRET")
 
-	alpclient := alpaca.NewClient(alpaca.ClientOpts{
-		APIKey:    apiKey,
-		APISecret: secretKey,
-		BaseURL:   "https://paper-api.alpaca.markets"})
+	// Skip Alpaca initialization if keys are not set
+	var alpclient *alpaca.Client
+	var account *alpaca.Account
 
-	req, _ := http.NewRequest("GET", "https://paper-api.alpaca.markets/v2/account", nil)
-	req.Header.Set("APCA-API-KEY-ID", apiKey)
-	req.Header.Set("APCA-API-SECRET-KEY", secretKey)
+	if apiKey != "" && secretKey != "" {
+		alpclient = alpaca.NewClient(alpaca.ClientOpts{
+			APIKey:    apiKey,
+			APISecret: secretKey,
+			BaseURL:   "https://paper-api.alpaca.markets"})
 
-	_, err = alpclient.GetAccount()
-	if err != nil {
-		log.Fatalln(err)
-	}
-
-	client := &http.Client{}
-	resp, err := client.Do(req)
-	if err != nil {
-		log.Fatalln(err)
-	}
-	defer resp.Body.Close()
-
-	account, err := alpclient.GetAccount()
-	if err != nil {
-		log.Printf("Warning: Could not fetch account for risk manager: %v\n", err)
+		account, err = alpclient.GetAccount()
+		if err != nil {
+			log.Printf("Warning: Could not connect to Alpaca (check API keys in settings): %v\n", err)
+			alpclient = nil
+			account = nil
+		} else {
+			log.Println("Alpaca account connected successfully")
+		}
+	} else {
+		log.Println("Warning: Alpaca API keys not configured. Please set them in Settings page.")
 	}
 
 	var riskMgr *risk.Manager

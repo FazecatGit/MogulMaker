@@ -43,10 +43,7 @@ function shouldRateLimit(): boolean {
 
 const apiClient = axios.create({
   baseURL: process.env.NEXT_PUBLIC_API_GATEWAY_URL || 'http://localhost:3000/api',
-  timeout: 30000, // 30s timeout - reasonable for normal requests
-  headers: {
-    'Accept-Encoding': 'gzip, deflate', // Enable compression support
-  },
+  timeout: 30000, // 30s timeout
 });
 
 // Request interceptor: check rate limits and add token

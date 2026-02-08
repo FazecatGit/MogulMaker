@@ -20,12 +20,27 @@ export default function SecretInput({
 }: SecretInputProps) {
   const [show, setShow] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [isFocused, setIsFocused] = useState(false);
 
   const handleCopy = () => {
     navigator.clipboard.writeText(value);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
+
+  const handleFocus = () => {
+    setIsFocused(true);
+    if (!value) {
+      // Clear the masked value when user focuses to type
+      onChange('');
+    }
+  };
+
+  const handleBlur = () => {
+    setIsFocused(false);
+  };
+
+  const displayValue = (isFocused || value) ? value : maskedValue;
 
   return (
     <div>
@@ -34,13 +49,16 @@ export default function SecretInput({
         <div className="flex-1 relative">
           <input
             type={show ? 'text' : 'password'}
-            value={value || maskedValue}
+            value={displayValue}
             onChange={(e) => onChange(e.target.value)}
+            onFocus={handleFocus}
+            onBlur={handleBlur}
             placeholder={placeholder}
             className="w-full px-4 py-2 bg-slate-700 border border-slate-600 rounded text-white placeholder-slate-400 focus:outline-none focus:border-blue-500"
           />
           <button
             onClick={() => setShow(!show)}
+            type="button"
             className="absolute right-3 top-1/2 transform -translate-y-1/2 text-slate-400 hover:text-slate-300"
           >
             {show ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
@@ -48,7 +66,9 @@ export default function SecretInput({
         </div>
         <button
           onClick={handleCopy}
-          className="px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded transition flex items-center gap-2"
+          type="button"
+          disabled={!value}
+          className="px-4 py-2 bg-slate-700 hover:bg-slate-600 disabled:bg-slate-800 disabled:cursor-not-allowed text-white rounded transition flex items-center gap-2"
         >
           {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
         </button>

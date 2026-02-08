@@ -58,24 +58,27 @@ export default function SettingsPage() {
     setError(null);
     try {
       const response = await apiClient.get('/settings');
-      if (response.data) {
+      console.log('[Settings] Fetched from server:', response);
+      
+      if (response) {
         setSettings((prev) => ({
           ...prev,
           trading: {
-            autoStopLoss: response.data.trading?.autoStopLoss ?? prev.trading.autoStopLoss,
-            autoProfitTaking: response.data.trading?.autoProfitTaking ?? prev.trading.autoProfitTaking,
+            autoStopLoss: response.trading?.autoStopLoss ?? prev.trading.autoStopLoss,
+            autoProfitTaking: response.trading?.autoProfitTaking ?? prev.trading.autoProfitTaking,
           },
           api: {
             alpacaKey: '',
-            alpacaKeyMasked: response.data.api?.alpacaKeyMasked || '****...****',
+            alpacaKeyMasked: response.api?.alpacaKeyMasked || '****...****',
             alpacaSecret: '',
-            alpacaSecretMasked: response.data.api?.alpacaSecretMasked || '****...****',
+            alpacaSecretMasked: response.api?.alpacaSecretMasked || '****...****',
             finnhubKey: '',
-            finnhubKeyMasked: response.data.api?.finnhubKeyMasked || '****...****',
+            finnhubKeyMasked: response.api?.finnhubKeyMasked || '****...****',
           },
         }));
       }
     } catch (err: any) {
+      console.error('[Settings] Fetch error:', err);
       setError(err.message || 'Failed to fetch settings');
     } finally {
       setIsLoading(false);
@@ -103,10 +106,18 @@ export default function SettingsPage() {
           delete payload.api[key as keyof typeof payload.api]
       );
 
-      await apiClient.post('/settings', payload);
+      console.log('[Settings] Saving settings:', { ...payload, api: '***hidden***' });
+      const response = await apiClient.post('/settings', payload);
+      console.log('[Settings] Save response:', response);
+      
       setSuccess('Settings saved successfully!');
+      
+      // Refresh settings from server to get masked values
+      await fetchSettings();
+      
       setTimeout(() => setSuccess(null), 3000);
     } catch (err: any) {
+      console.error('[Settings] Save error:', err);
       setError(err.message || 'Failed to save settings');
     } finally {
       setIsLoading(false);

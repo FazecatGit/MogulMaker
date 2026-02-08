@@ -1532,9 +1532,9 @@ func (api *API) HandleGetSettings(w http.ResponseWriter, r *http.Request) {
 	finnhubKey := settingshandler.GetSetting(api.DB, "finnhub_api_key", "").(string)
 
 	apiSettings := map[string]string{
-		"alpacaKey":    settingshandler.MaskSensitiveValue(alpacaKey),
-		"alpacaSecret": settingshandler.MaskSensitiveValue(alpacaSecret),
-		"finnhubKey":   settingshandler.MaskSensitiveValue(finnhubKey),
+		"alpacaKeyMasked":    settingshandler.MaskSensitiveValue(alpacaKey),
+		"alpacaSecretMasked": settingshandler.MaskSensitiveValue(alpacaSecret),
+		"finnhubKeyMasked":   settingshandler.MaskSensitiveValue(finnhubKey),
 	}
 
 	response := settingshandler.SettingsResponse{
@@ -1557,25 +1557,51 @@ func (api *API) HandleUpdateSettings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	log.Printf("[Settings] Updating settings - has trading: %v, has api: %v", payload.Trading != nil, payload.API != nil)
+
 	// Update trading settings
 	if payload.Trading != nil {
-		settingshandler.SetSetting(api.DB, "auto_stop_loss", payload.Trading.AutoStopLoss)
-		settingshandler.SetSetting(api.DB, "auto_profit_taking", payload.Trading.AutoProfitTaking)
+		if err := settingshandler.SetSetting(api.DB, "auto_stop_loss", payload.Trading.AutoStopLoss); err != nil {
+			log.Printf("[Settings] Error saving auto_stop_loss: %v", err)
+			WriteError(w, http.StatusInternalServerError, "Failed to save auto_stop_loss setting")
+			return
+		}
+		if err := settingshandler.SetSetting(api.DB, "auto_profit_taking", payload.Trading.AutoProfitTaking); err != nil {
+			log.Printf("[Settings] Error saving auto_profit_taking: %v", err)
+			WriteError(w, http.StatusInternalServerError, "Failed to save auto_profit_taking setting")
+			return
+		}
+		log.Printf("[Settings] Trading settings saved successfully")
 	}
 
 	// Update API settings
 	if payload.API != nil {
 		if payload.API.AlpacaKey != "" {
-			settingshandler.SetSetting(api.DB, "alpaca_api_key", payload.API.AlpacaKey)
+			if err := settingshandler.SetSetting(api.DB, "alpaca_api_key", payload.API.AlpacaKey); err != nil {
+				log.Printf("[Settings] Error saving Alpaca API key: %v", err)
+				WriteError(w, http.StatusInternalServerError, "Failed to save Alpaca API key")
+				return
+			}
 			os.Setenv("ALPACA_API_KEY", payload.API.AlpacaKey)
+			log.Printf("[Settings] Alpaca API key saved (length: %d)", len(payload.API.AlpacaKey))
 		}
 		if payload.API.AlpacaSecret != "" {
-			settingshandler.SetSetting(api.DB, "alpaca_api_secret", payload.API.AlpacaSecret)
+			if err := settingshandler.SetSetting(api.DB, "alpaca_api_secret", payload.API.AlpacaSecret); err != nil {
+				log.Printf("[Settings] Error saving Alpaca API secret: %v", err)
+				WriteError(w, http.StatusInternalServerError, "Failed to save Alpaca API secret")
+				return
+			}
 			os.Setenv("ALPACA_API_SECRET", payload.API.AlpacaSecret)
+			log.Printf("[Settings] Alpaca API secret saved (length: %d)", len(payload.API.AlpacaSecret))
 		}
 		if payload.API.FinnhubKey != "" {
-			settingshandler.SetSetting(api.DB, "finnhub_api_key", payload.API.FinnhubKey)
+			if err := settingshandler.SetSetting(api.DB, "finnhub_api_key", payload.API.FinnhubKey); err != nil {
+				log.Printf("[Settings] Error saving Finnhub API key: %v", err)
+				WriteError(w, http.StatusInternalServerError, "Failed to save Finnhub API key")
+				return
+			}
 			os.Setenv("FINNHUB_API_KEY", payload.API.FinnhubKey)
+			log.Printf("[Settings] Finnhub API key saved (length: %d)", len(payload.API.FinnhubKey))
 		}
 	}
 

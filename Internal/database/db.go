@@ -46,6 +46,13 @@ func InitDatabase() error {
 	Queries = database.New(DB)
 
 	fmt.Println("Database connected successfully!")
+
+	// Initialize schema (creates tables if they don't exist)
+	if err = initializeSchema(); err != nil {
+		return fmt.Errorf("failed to initialize schema: %w", err)
+	}
+	fmt.Println("Database schema initialized!")
+
 	return nil
 }
 
@@ -84,6 +91,27 @@ func initializeSchema() error {
 
 	CREATE INDEX IF NOT EXISTS idx_watchlist_symbol ON watchlist(symbol);
 	CREATE INDEX IF NOT EXISTS idx_watchlist_status ON watchlist(status);
+	
+	CREATE TABLE IF NOT EXISTS settings (
+		id SERIAL PRIMARY KEY,
+		setting_key VARCHAR(255) UNIQUE NOT NULL,
+		setting_value TEXT NOT NULL,
+		setting_type VARCHAR(50) DEFAULT 'string',
+		is_encrypted BOOLEAN DEFAULT FALSE,
+		created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+		updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+	);
+	
+	CREATE INDEX IF NOT EXISTS idx_settings_key ON settings(setting_key);
+	
+	INSERT INTO settings (setting_key, setting_value, setting_type, is_encrypted) 
+	VALUES 
+	  ('alpaca_api_key', '', 'string', TRUE),
+	  ('alpaca_api_secret', '', 'string', TRUE),
+	  ('finnhub_api_key', '', 'string', TRUE),
+	  ('auto_stop_loss', 'true', 'boolean', FALSE),
+	  ('auto_profit_taking', 'false', 'boolean', FALSE)
+	ON CONFLICT (setting_key) DO NOTHING;
 	`
 
 	_, err := DB.Exec(schemaSQL)

@@ -7,31 +7,26 @@ import (
 	"os"
 )
 
-// Handler handles all settings-related operations
 type Handler struct {
 	DB *sql.DB
 }
 
-// NewHandler creates a new settings handler
 func NewHandler(db *sql.DB) *Handler {
 	return &Handler{DB: db}
 }
 
-// writeJSON writes a JSON response
 func writeJSON(w http.ResponseWriter, statusCode int, data interface{}) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(statusCode)
 	json.NewEncoder(w).Encode(data)
 }
 
-// writeError writes an error JSON response
 func writeError(w http.ResponseWriter, statusCode int, message string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(statusCode)
 	json.NewEncoder(w).Encode(map[string]string{"error": message})
 }
 
-// HandleGetSettings returns all settings
 func (h *Handler) HandleGetSettings(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
@@ -61,7 +56,6 @@ func (h *Handler) HandleGetSettings(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, response)
 }
 
-// HandleUpdateSettings updates user settings
 func (h *Handler) HandleUpdateSettings(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
@@ -74,40 +68,82 @@ func (h *Handler) HandleUpdateSettings(w http.ResponseWriter, r *http.Request) {
 	// Update trading settings
 	if payload.Trading != nil {
 		if payload.Trading.MaxDailyLoss > 0 {
-			SetSetting(h.DB, "max_daily_loss", payload.Trading.MaxDailyLoss)
+			if err := SetSetting(h.DB, "max_daily_loss", payload.Trading.MaxDailyLoss); err != nil {
+				writeError(w, http.StatusInternalServerError, "Failed to save max_daily_loss setting")
+				return
+			}
 		}
 		if payload.Trading.MaxPositionRisk > 0 {
-			SetSetting(h.DB, "max_position_risk", payload.Trading.MaxPositionRisk)
+			if err := SetSetting(h.DB, "max_position_risk", payload.Trading.MaxPositionRisk); err != nil {
+				writeError(w, http.StatusInternalServerError, "Failed to save max_position_risk setting")
+				return
+			}
 		}
 		if payload.Trading.MaxOpenPositions > 0 {
-			SetSetting(h.DB, "max_open_positions", float64(payload.Trading.MaxOpenPositions))
+			if err := SetSetting(h.DB, "max_open_positions", float64(payload.Trading.MaxOpenPositions)); err != nil {
+				writeError(w, http.StatusInternalServerError, "Failed to save max_open_positions setting")
+				return
+			}
 		}
-		SetSetting(h.DB, "trading_hours_only", payload.Trading.TradingHoursOnly)
-		SetSetting(h.DB, "auto_stop_loss", payload.Trading.AutoStopLoss)
-		SetSetting(h.DB, "auto_profit_taking", payload.Trading.AutoProfitTaking)
+		if err := SetSetting(h.DB, "trading_hours_only", payload.Trading.TradingHoursOnly); err != nil {
+			writeError(w, http.StatusInternalServerError, "Failed to save trading_hours_only setting")
+			return
+		}
+		if err := SetSetting(h.DB, "auto_stop_loss", payload.Trading.AutoStopLoss); err != nil {
+			writeError(w, http.StatusInternalServerError, "Failed to save auto_stop_loss setting")
+			return
+		}
+		if err := SetSetting(h.DB, "auto_profit_taking", payload.Trading.AutoProfitTaking); err != nil {
+			writeError(w, http.StatusInternalServerError, "Failed to save auto_profit_taking setting")
+			return
+		}
 	}
 
 	// Update notification settings
 	if payload.Notifications != nil {
-		SetSetting(h.DB, "email_alerts", payload.Notifications.EmailAlerts)
-		SetSetting(h.DB, "trade_execution_notifications", payload.Notifications.TradeExecutionNotifications)
-		SetSetting(h.DB, "risk_alerts", payload.Notifications.RiskAlerts)
-		SetSetting(h.DB, "daily_summary", payload.Notifications.DailySummary)
-		SetSetting(h.DB, "news_alerts", payload.Notifications.NewsAlerts)
+		if err := SetSetting(h.DB, "email_alerts", payload.Notifications.EmailAlerts); err != nil {
+			writeError(w, http.StatusInternalServerError, "Failed to save email_alerts setting")
+			return
+		}
+		if err := SetSetting(h.DB, "trade_execution_notifications", payload.Notifications.TradeExecutionNotifications); err != nil {
+			writeError(w, http.StatusInternalServerError, "Failed to save trade_execution_notifications setting")
+			return
+		}
+		if err := SetSetting(h.DB, "risk_alerts", payload.Notifications.RiskAlerts); err != nil {
+			writeError(w, http.StatusInternalServerError, "Failed to save risk_alerts setting")
+			return
+		}
+		if err := SetSetting(h.DB, "daily_summary", payload.Notifications.DailySummary); err != nil {
+			writeError(w, http.StatusInternalServerError, "Failed to save daily_summary setting")
+			return
+		}
+		if err := SetSetting(h.DB, "news_alerts", payload.Notifications.NewsAlerts); err != nil {
+			writeError(w, http.StatusInternalServerError, "Failed to save news_alerts setting")
+			return
+		}
 	}
 
 	// Update API settings
 	if payload.API != nil {
 		if payload.API.AlpacaKey != "" {
-			SetSetting(h.DB, "alpaca_api_key", payload.API.AlpacaKey)
+			if err := SetSetting(h.DB, "alpaca_api_key", payload.API.AlpacaKey); err != nil {
+				writeError(w, http.StatusInternalServerError, "Failed to save Alpaca API key")
+				return
+			}
 			os.Setenv("ALPACA_API_KEY", payload.API.AlpacaKey)
 		}
 		if payload.API.AlpacaSecret != "" {
-			SetSetting(h.DB, "alpaca_api_secret", payload.API.AlpacaSecret)
+			if err := SetSetting(h.DB, "alpaca_api_secret", payload.API.AlpacaSecret); err != nil {
+				writeError(w, http.StatusInternalServerError, "Failed to save Alpaca API secret")
+				return
+			}
 			os.Setenv("ALPACA_API_SECRET", payload.API.AlpacaSecret)
 		}
 		if payload.API.FinnhubKey != "" {
-			SetSetting(h.DB, "finnhub_api_key", payload.API.FinnhubKey)
+			if err := SetSetting(h.DB, "finnhub_api_key", payload.API.FinnhubKey); err != nil {
+				writeError(w, http.StatusInternalServerError, "Failed to save Finnhub API key")
+				return
+			}
 			os.Setenv("FINNHUB_API_KEY", payload.API.FinnhubKey)
 		}
 	}
