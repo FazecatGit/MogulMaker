@@ -103,7 +103,7 @@ cd ..
 
 ## Running the Application
 
-### Easy Mode: Start Everything at Once
+### Start Everything at Once
 
 ```powershell
 # Windows PowerShell
@@ -138,7 +138,6 @@ Navigate to: **http://localhost:3001**
 - Encrypted with AES-256
 - Stored securely in PostgreSQL
 - Automatically loaded on startup
-- Never exposed in the UI (shown as `PK5A****...****`)
 
 ---
 
@@ -191,30 +190,6 @@ Navigate to: **http://localhost:3001**
 - Trading preferences
 - Auto stop-loss/profit taking
 - Encrypted storage
-
----
-
-## Architecture
-
-```
-MogulMaker/
-├── cmd/api/              # Go backend server
-├── frontend/             # Next.js web interface
-├── api-gateway/          # Express.js API gateway
-├── Internal/
-│   ├── database/         # PostgreSQL connection & queries
-│   ├── handlers/         # API route handlers
-│   │   ├── settings/     # Settings with AES-256 encryption
-│   │   ├── risk/         # Risk management
-│   │   └── monitoring/   # Trade monitoring
-│   ├── strategy/         # Trading strategies & signals
-│   │   ├── indicators/   # RSI, ATR, Volume analysis
-│   │   ├── signals/      # Entry/exit signals
-│   │   └── position/     # Position management
-│   └── news_scraping/    # News aggregation & sentiment
-└── scripts/              # Utility scripts
-```
-
 
 ---
 
